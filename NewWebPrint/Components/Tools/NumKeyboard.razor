@@ -1,0 +1,179 @@
+@inject KeypadService Keypad
+
+<MudPaper Class="@($"nk-container{(FillContainer ? " nk-fluid" : "")}")"
+          Elevation="0"
+          Outlined="false"
+          Style="@($"{ContainerStyle}background:transparent;box-shadow:none;border:none;")">
+    <div style="@GridStyle">
+        @foreach (var key in KeyLayout)
+        {
+            @RenderKey(key)
+        }
+    </div>
+</MudPaper>
+
+@code {
+    /* ========= 尺寸参数 ========= */
+    [Parameter] public int KeyboardWidthPx { get; set; }
+    [Parameter] public int KeyboardHeightPx { get; set; }
+    [Parameter] public int KeySpacingPx { get; set; } = 4;
+    /// <summary>为 true 时填满父容器，按键字号使用 clamp 自适应。</summary>
+    [Parameter] public bool FillContainer { get; set; }
+    [Parameter] public string FluidFontClamp { get; set; } = "clamp(1rem, 2vw + 0.5rem, 1.5rem)";
+
+    /* ========= 可选开关 ========= */
+    [Parameter] public bool AllowDecimal { get; set; } = true;
+    [Parameter] public bool AllowNegative { get; set; } = false;
+    [Parameter] public EventCallback<string?> OnSubmit { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    /* ========= 固定布局：3 列 × 5 行 ========= */
+    private const int Cols = 3;
+    private const int Rows = 5;
+
+    private readonly string[] KeyLayout =
+    {
+        "1","2","3",
+        "4","5","6",
+        "7","8","9",
+        "±","0",".",
+        "清空","空格","退格"
+    };
+
+    /* ========= 尺寸与样式计算 ========= */
+    private int CellWidthPx =>
+        Math.Max(16, (KeyboardWidthPx - (Cols - 1) * KeySpacingPx) / Cols);
+
+    private int CellHeightPx =>
+        Math.Max(16, (KeyboardHeightPx - (Rows - 1) * KeySpacingPx) / Rows);
+
+    private int FontSizePx =>
+        Math.Max(14, (int)Math.Floor(Math.Min(CellWidthPx * 0.38, CellHeightPx * 0.55)));
+
+    private string ContainerStyle => FillContainer
+        ? "width:100%;height:100%;min-width:0;min-height:0;"
+        : $"width:{KeyboardWidthPx}px;height:{KeyboardHeightPx}px;";
+
+    private string GridStyle => FillContainer
+        ? $"display:grid;" +
+          $"grid-template-columns:repeat({Cols},1fr);" +
+          $"grid-template-rows:repeat({Rows},1fr);" +
+          $"gap:clamp(2px,0.6vw,10px);" +
+          $"width:100%;height:100%;"
+        : $"display:grid;" +
+          $"grid-template-columns:repeat({Cols},1fr);" +
+          $"grid-auto-rows:{CellHeightPx}px;" +
+          $"gap:{KeySpacingPx}px;";
+
+    /* ========= 文本映射 ========= */
+    private string Loc(string key) => key switch
+    {
+        "清空" => "🗑",
+        "退格" => "⌫",
+        "空格" => "Space",
+        _ => key
+    };
+
+    /* ========= 渲染单个键 ========= */
+    private RenderFragment RenderKey(string key) => builder =>
+    {
+        var color = key switch
+        {
+            "清空" => Color.Error,
+            "退格" => Color.Warning,
+            _ => Color.Default
+        };
+
+        var fontStyle = FillContainer
+            ? $"font-size:{FluidFontClamp};"
+            : $"font-size:{(key == "空格" ? FontSizePx * 0.7 : FontSizePx)}px;";
+
+        builder.OpenComponent(0, typeof(MudButton));
+        builder.AddAttribute(1, "Variant", Variant.Filled);
+        builder.AddAttribute(2, "Color", color);
+        builder.AddAttribute(3, "Class", FillContainer ? "nk-btn nk-btn-fluid" : "nk-btn");
+        builder.AddAttribute(4, "Style", $"width:100%;height:100%;min-height:0;{fontStyle}");
+        builder.AddAttribute(5, "OnClick",
+            EventCallback.Factory.Create<MouseEventArgs>(this, () => OnKeyClick(key)));
+
+        builder.AddAttribute(6, "ChildContent", (RenderFragment)(b =>
+        {
+            b.OpenElement(0, "div");
+            b.AddAttribute(1, "style",
+                "display:flex;align-items:center;justify-content:center;width:100%;height:100%;");
+            b.AddContent(2, Loc(key));
+            b.CloseElement();
+        }));
+
+        builder.CloseComponent();
+    };
+
+    /* ========= 按键逻辑 ========= */
+    private async Task OnKeyClick(string key)
+    {
+        if (!Keypad.HasTarget) return;
+
+        switch (key)
+        {
+            case "清空":
+                Keypad.Clear();
+                if (OnClear.HasDelegate) await OnClear.InvokeAsync();
+                return;
+
+            case "退格":
+                Keypad.Backspace();
+                return;
+
+            case "空格":
+                {
+                    var cur = Keypad.GetValue() ?? string.Empty;
+                    Keypad.SetValue(cur + " ");
+                }
+                return;
+
+            case "±":
+                if (AllowNegative) Keypad.ToggleSign();
+                return;
+
+            case ".":
+                if (AllowDecimal)
+                {
+                    var cur = Keypad.GetValue() ?? "";
+                    if (!cur.Contains('.'))
+                        Keypad.SetValue(string.IsNullOrEmpty(cur) ? "0." : cur + ".");
+                }
+                return;
+
+            default:
+                if (char.IsDigit(key[0]))
+                {
+                    var cur = Keypad.GetValue() ?? "";
+                    Keypad.SetValue(cur == "0" ? key : cur + key);
+                }
+                break;
+        }
+    }
+}
+
+<style>
+.nk-container {
+    padding: 0;
+    background: transparent;
+    display: inline-block;
+    overflow: hidden;
+}
+
+.nk-container.nk-fluid {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.nk-btn {
+    width: 100%;
+}
+
+.nk-btn-fluid {
+    font-weight: bold;
+}
+</style>

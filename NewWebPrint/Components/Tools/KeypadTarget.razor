@@ -1,0 +1,83 @@
+@typeparam TValue
+@inject KeypadService Keypad
+
+<MudTextField T="string"
+              Value="@_stringValue"
+              ValueChanged="@(v => OnInternalChanged(v))"
+              Label="@Label"
+              Dense="@Dense"
+              Variant="@(Variant ?? MudBlazor.Variant.Outlined)"
+              Margin="@(Margin ?? (Dense ? MudBlazor.Margin.Dense : MudBlazor.Margin.None))"
+              Immediate="@(Immediate ?? true)"
+              Clearable="@(Clearable ?? true)"
+              InputType="@(InputType ?? MudBlazor.InputType.Text)"
+              Adornment="@(Adornment ?? MudBlazor.Adornment.None)"
+              Disabled="@Disabled"
+              AdornmentText="@AdornmentText"
+              AdornmentColor="@(AdornmentColor ?? MudBlazor.Color.Default)"
+              Class="@BuildClass()"
+              @onfocus="HandleFocus"
+              @onblur="HandleBlur"
+              @attributes="AdditionalAttributes"/>
+
+@code {
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Dense { get; set; }
+    [Parameter] public Variant? Variant { get; set; }
+    [Parameter] public Margin? Margin { get; set; }
+    [Parameter] public bool? Immediate { get; set; }
+    [Parameter] public bool? Clearable { get; set; }
+    [Parameter] public InputType? InputType { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public Adornment? Adornment { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? AdornmentText { get; set; }
+    [Parameter] public Color? AdornmentColor { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? _stringValue;
+
+    protected override void OnParametersSet() => _stringValue = ValueToString(Value);
+
+    private async Task OnInternalChanged(string? newValue)
+    {
+        _stringValue = newValue;
+        await ValueChanged.InvokeAsync(StringToValue(newValue));
+    }
+
+    private TValue? StringToValue(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return default;
+        try
+        {
+            var targetType = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
+            return (TValue)Convert.ChangeType(s, targetType)!;
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private string? ValueToString(TValue? val) => val?.ToString();
+
+    private Task HandleFocus(FocusEventArgs e)
+    {
+        Keypad.Register(
+            getter: () => _stringValue,
+            setter: v =>
+            {
+                _stringValue = v;
+                _ = ValueChanged.InvokeAsync(StringToValue(v));
+                _ = InvokeAsync(StateHasChanged);
+            });
+        return Task.CompletedTask;
+    }
+
+    private Task HandleBlur(FocusEventArgs _) => Task.CompletedTask;
+
+    private string BuildClass() => string.IsNullOrWhiteSpace(Class) ? "mb-1" : $"{Class} mb-1";
+}

@@ -1,0 +1,933 @@
+﻿@page "/LabelPrintForZY"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using System.Text.Encodings.Web
+@using ClosedXML.Excel
+@using System.Text
+@using Microsoft.AspNetCore.Components.Web
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+@using Microsoft.Data.SqlClient
+
+<MudTabs Elevation="2" Rounded="true" Class="px-4 py-2 ma-2 tab-background" @bind-ActivePanelIndex="activeIndex"
+         ApplyEffectsToContainer="true" PanelClass="pa-6 ">
+    <MudTabPanel Text="遮阳100*80">
+        <MudGrid Class="pa-2" GutterSize="2">
+            <MudItem xs="12" md="6">
+                <MudSelect T="string"
+                           Label="选择打印机"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudNumericField @bind-Value="PrintCount" Margin="Margin.Dense" Label="打印数量"
+                                     Variant="Variant.Outlined" Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="PrintSubmit"
+                               Disabled="@IsPrinting"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 150px">
+                        @(IsPrinting ? "打印中..." : "打印")
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Info"
+                               OnClick="ExportSubmit"
+                               Disabled="@IsExporting"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 150px">
+                        @(IsExporting ? "导出中..." : "导出")
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">扫码录入</MudText>
+                    <MudTextField @bind-Value="ScanInput"
+                                  Label="扫码输入框（回车录入）"
+                                  Immediate="true"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="扫描后按回车自动录入"
+                                  Class="font-monospace scan-input-field"
+                                  OnKeyUp="HandleScanInputKeyUp"
+                                  Style="width:100%;"/>
+                    <div class="scan-table-wrap mt-2">
+                        <MudTable Items="@ScanRows" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+                            <HeaderContent>
+                                <MudTh Style="width: 80px;">序号</MudTh>
+                                <MudTh>条码</MudTh>
+                                <MudTh Style="width: 90px;">操作</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Index</MudTd>
+                                <MudTd>@context.Code</MudTd>
+                                <MudTd>
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               OnClick="@(() => RemoveScannedCode(context.Index - 1))">
+                                        删除
+                                    </MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="380"/>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="遮阳30*12">
+        <MudGrid Class="pa-2" GutterSize="2">
+            <MudItem xs="12" md="6">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudSelect T="string"
+                               Label="选择打印机"
+                               @bind-Value="SelectedPrinter"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Print"
+                               Variant="Variant.Outlined"
+                               FullWidth="true">
+                        @foreach (var p in Printers)
+                        {
+                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudDatePicker Label="yyyy-MM-dd" Editable="true" @bind-Date="_date"
+                                   Mask="@(new DateMask("0000-00-00"))" DateFormat="yyyy-MM-dd" Placeholder="例如：2026-04-30"
+                                   Variant="Variant.Outlined"/>
+                </MudStack>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    @* *@
+                    @* <MudTextField @bind-Value="MachineNo" Label="测试机台" Variant="Variant.Outlined"></MudTextField> *@
+                    @* <MudTextField @bind-Value="PO" Label="生产订单号" Variant="Variant.Outlined"></MudTextField> *@
+                    <MudTextField @bind-Value="ZYCode" Label="序列号" FullWidth="true"
+                                  Variant="Variant.Outlined"></MudTextField>
+                    <MudNumericField @bind-Value="PrintCount" Label="打印数量"
+                                     Variant="Variant.Outlined" Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="@PrintSubmit"
+                               Disabled="@IsPrinting"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 150px">
+                        @(IsPrinting ? "打印中..." : "打印")
+                    </MudButton>
+
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="12">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="380"/>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="遮阳34*34圆形标签">
+        <MudGrid Class="pa-2" GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudSelect T="string"
+                               Label="选择打印机"
+                               @bind-Value="SelectedPrinter"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Print"
+                               Variant="Variant.Outlined"
+                               FullWidth="true">
+                        @foreach (var p in Printers)
+                        {
+                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+
+            </MudItem>
+
+            <MudItem xs="12" md="8" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudTextField @bind-Value="ZYCode" Label="序列号" FullWidth="true"
+                                  Variant="Variant.Outlined"></MudTextField>
+                    <MudTextField @bind-Value="SafeMargin" Label="二维码缩放" FullWidth="true"
+                                  Variant="Variant.Outlined"></MudTextField>
+                    <MudNumericField @bind-Value="PrintCount" Label="打印数量"
+                                     Variant="Variant.Outlined" Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="@PrintSubmit"
+                               Disabled="@IsPrinting"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 200px">
+                        @(IsPrinting ? "打印中..." : "打印")
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="12">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="380"/>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="客户定制A4标签">
+        <MudGrid Class="pa-2" GutterSize="2">
+            <MudItem xs="12" md="6">
+                <MudSelect T="string"
+                           Label="选择打印机"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudNumericField @bind-Value="PrintCount" Margin="Margin.Dense" Label="打印数量"
+                                     Variant="Variant.Outlined" Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="PrintSubmit"
+                               Disabled="@IsPrinting"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 150px">
+                        @(IsPrinting ? "打印中..." : "打印")
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Info"
+                               OnClick="ExportSubmit"
+                               Disabled="@IsExporting"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600;width: 150px">
+                        @(IsExporting ? "导出中..." : "导出")
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">扫码录入</MudText>
+                    <MudTextField @bind-Value="ScanInput"
+                                  Label="扫码输入框（回车录入）"
+                                  Immediate="true"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="扫描后按回车自动录入"
+                                  Class="font-monospace scan-input-field"
+                                  OnKeyUp="HandleScanInputKeyUp"
+                                  Style="width:100%;"/>
+                    <div class="scan-table-wrap mt-2">
+                        <MudTable Items="@ScanRows" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+                            <HeaderContent>
+                                <MudTh Style="width: 80px;">序号</MudTh>
+                                <MudTh>条码</MudTh>
+                                <MudTh Style="min-width: 160px;">生产日期</MudTh>
+                                <MudTh Style="width: 90px;">操作</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Index</MudTd>
+                                <MudTd>@context.Code</MudTd>
+                                <MudTd Class="text-no-wrap">@(context.ProductionTime?.ToString("yyyyMMdd") ?? "—")</MudTd>
+                                <MudTd>
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               OnClick="@(() => RemoveScannedCode(context.Index - 1))">
+                                        删除
+                                    </MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-2" Style="height:100%;">
+                    <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="380"/>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+</MudTabs>
+
+
+@code {
+
+    // AgentBaseUrl 不再在 C# 里用，固定在 JS 里为 http://localhost:5005
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    string? ScanInput { get; set; } = string.Empty;
+    List< ScannedLine> ScannedLines { get; set; } = new();
+    List< ScanRow> ScanRows => ScannedLines
+        .Select((line, index) => new ScanRow(index + 1, line.Code, line.ProductionTime))
+        .ToList();
+    bool IsPrinting { get; set; }
+    bool IsExporting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+    string PaperSize { get; set; } = "100*80";
+    string MachineNo { get; set; } = string.Empty;
+    string PO { get; set; } = string.Empty;
+    string ZYCode { get; set; } = string.Empty;
+    float SafeMargin = 0.2f;
+    DateTime? _date = DateTime.Today;
+    int PrintCount = 1;
+    int activeIndex = 0;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "LabelPrintForZY_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task HandleScanInputKeyUp(KeyboardEventArgs e)
+    {
+        var isEnter = string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(e.Code, "Enter", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(e.Code, "NumpadEnter", StringComparison.OrdinalIgnoreCase);
+        if (!isEnter)
+            return;
+
+        var code = (ScanInput ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            ScanInput = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var duplicateIndex = ScannedLines.FindIndex(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
+        if (duplicateIndex >= 0)
+        {
+            SnackbarHelper.Show($"条码重码：与序号 {duplicateIndex + 1} 重复", Severity.Warning);
+            AppendLog($"重码拦截：{code}，与序号 {duplicateIndex + 1} 重复。");
+            ScanInput = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            await JS.InvokeVoidAsync("blazorClearScanInputs");
+            return;
+        }
+
+        if (ScannedLines.Count >= 20)
+        {
+            SnackbarHelper.Show("最多支持20行条码，不能继续添加", Severity.Warning);
+            AppendLog($"超限拦截：条码 {code} 未添加，当前已达 20 行。");
+            ScanInput = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            await JS.InvokeVoidAsync("blazorClearScanInputs");
+            return;
+        }
+
+        DateTime? productionTime = null;
+        if (activeIndex == 3)
+        {
+            var (ok, prodTime, err) = await TryGetHskProductionTimeAsync(code);
+            if (!ok)
+            {
+                SnackbarHelper.Show(err ?? "查询生产日期失败", Severity.Error);
+                AppendLog($"未录入 {code}：{err}");
+                ScanInput = string.Empty;
+                await InvokeAsync(StateHasChanged);
+                await JS.InvokeVoidAsync("blazorClearScanInputs");
+                return;
+            }
+
+            productionTime = prodTime;
+            AppendLog($"已录入：{code}，生产日期 {productionTime:yyyyMMdd}");
+        }
+
+        ScannedLines.Add(new ScannedLine(code, productionTime));
+        if (activeIndex != 3)
+            AppendLog($"已录入：{code}");
+
+        ScanInput = string.Empty;
+        await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("blazorClearScanInputs");
+        await Task.Delay(1);
+        await JS.InvokeVoidAsync("blazorScrollScanTableToBottom");
+    }
+
+    void RemoveScannedCode(int index)
+    {
+        if (index < 0 || index >= ScannedLines.Count) return;
+        ScannedLines.RemoveAt(index);
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 从 HskCode.dbo.JC_ZYQD_21098 按 Barcode 取最新一条记录的 Time（生产日期）。
+    /// </summary>
+    async Task<(bool ok, DateTime? time, string? error)> TryGetHskProductionTimeAsync(string barcode)
+    {
+        var raw = Config.GetConnectionString("hskCodeSQL");
+        if (string.IsNullOrWhiteSpace(raw))
+            return (false, null, "未配置 ConnectionStrings:hskCodeSQL");
+
+        try
+        {
+            var builder = new SqlConnectionStringBuilder(raw);
+            // 内网 SQL 常用自签名证书，须信任服务器证书，否则会报“证书链是由不受信任的颁发机构颁发的”
+            builder.TrustServerCertificate = true;
+
+            await using var conn = new SqlConnection(builder.ConnectionString);
+            await conn.OpenAsync();
+            const string sql =
+                "SELECT TOP (1) [Time] FROM [dbo].[JC_ZYQD_21098] WHERE [Barcode] = @b ORDER BY [Time] DESC";
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@b", barcode);
+            var scalar = await cmd.ExecuteScalarAsync();
+            if (scalar == null || scalar == DBNull.Value)
+                return (false, null, "数据库中未找到该条码");
+
+            DateTime dt;
+            if (scalar is DateTime d)
+                dt = d;
+            else if (!DateTime.TryParse(
+                         Convert.ToString(scalar, System.Globalization.CultureInfo.InvariantCulture),
+                         System.Globalization.CultureInfo.InvariantCulture,
+                         System.Globalization.DateTimeStyles.None,
+                         out dt))
+                return (false, null, "生产日期字段格式异常");
+
+            return (true, dt, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, null, $"数据库查询失败：{ex.Message}");
+        }
+    }
+
+    record ScannedLine(string Code, DateTime? ProductionTime);
+
+    record ScanRow(int Index, string Code, DateTime? ProductionTime);
+
+    (bool ok, float w, float h) TryParsePaper(string paper)
+    {
+        try
+        {
+            var parts = (paper ?? "").Split(
+                new char[] { '*', 'x', 'X' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (parts.Length != 2) return (false, 0, 0);
+            return (true, float.Parse(parts[0]), float.Parse(parts[1]));
+        }
+        catch
+        {
+            return (false, 0, 0);
+        }
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        List<PrintBlock> list = new List<PrintBlock>();
+        if (activeIndex == 0)
+        {
+            PaperSize = "100*80";
+            if (ScannedLines.Count == 0)
+            {
+                SnackbarHelper.Show("请扫入条码", Severity.Warning);
+                return;
+            }
+            string codes = string.Join(",", ScannedLines.Select(x => x.Code));
+            list = print100x80(codes);
+        }
+        else if (activeIndex == 1)
+        {
+            PaperSize = "30*12";
+            list = print30x12();
+        }
+        
+        else if (activeIndex == 2)
+        {
+            PaperSize = "34*34";
+            list = print34x34();
+        }
+        
+        else if (activeIndex == 3)
+        {
+            PaperSize = "297*210";
+            if (ScannedLines.Count == 0)
+            {
+                SnackbarHelper.Show("请扫入条码", Severity.Warning);
+                return;
+            }
+
+            if (ScannedLines.Count > 20)
+            {
+                SnackbarHelper.Show("最多支持20行条码，请减少后再打印", Severity.Warning);
+                return;
+            }
+
+            list = printCustomerA4BarcodeBlocks(ScannedLines.ToArray());
+        }
+
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        var (ok, w, h) = TryParsePaper(PaperSize);
+        if (!ok || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误（如 100*80）", Severity.Error);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = activeIndex == 3,
+            Blocks = list
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}");
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = null,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task ExportSubmit()
+    {
+        if (IsExporting) return;
+        IsExporting = true;
+        try
+        {
+            // ✅ 和打印保持同一套规则：先把换行统一转成逗号
+            if (ScannedLines.Count == 0)
+            {
+                AppendLog("没有可导出的数据。");
+                StateHasChanged();
+                return;
+            }
+
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Sheet1");
+
+            ws.Cell(1, 1).Value = "序号";
+            ws.Cell(1, 2).Value = "条码";
+            ws.Cell(1, 3).Value = "生产日期";
+
+            for (int i = 0; i < ScannedLines.Count; i++)
+            {
+                var line = ScannedLines[i];
+                ws.Cell(i + 2, 1).Value = i + 1;
+                ws.Cell(i + 2, 2).Value = line.Code;
+                ws.Cell(i + 2, 3).Value = line.ProductionTime?.ToString("yyyyMMdd") ?? "";
+            }
+
+            ws.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var bytes = stream.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+
+            await JS.InvokeVoidAsync("blazorDownloadExcel", "导出结果.xlsx", base64);
+
+            AppendLog($"已导出 {ScannedLines.Count} 行到 Excel。");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"导出失败：{ex.Message}");
+        }
+        finally
+        {
+            IsExporting = false;
+        }
+
+        StateHasChanged();
+    }
+
+    List<PrintBlock> print100x80(string codes)
+    {
+        List<PrintBlock> list = new List<PrintBlock>()
+        {
+            new PrintBlock
+            {
+                Name = "frame",
+                X = 3,
+                Y = 6,
+                Width = 94,
+                Height = 70,
+                ShowBorder = true
+            },
+            new PrintBlock
+            {
+                Name = "title",
+                X = 10,
+                Y = 8,
+                Width = 79,
+                Height = 9,
+                ShowBorder = false,
+                Text = new TextElement()
+                {
+                    Content = "序列号二维码",
+                    FontName = "Arial",
+                    FontSize = 14,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            },
+            new PrintBlock
+            {
+                Name = "QRcode",
+                X = 10,
+                Y = 19,
+                Width = 79,
+                Height = 54,
+                ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = codes,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8",
+                    SafeMarginMm = 0.5f
+                }
+            }
+        };
+
+        return list;
+    }
+    
+    /// <summary>
+    /// 客户定制 A4：每个条码上方 5mm 显示 yyyyMMdd 生产日期，条码整体下移 5mm；
+    /// 条纹为 CODE_128（不绘制内置下排数字），数字由独立 <see cref="TextElement"/> 块显示。
+    /// </summary>
+    List<PrintBlock> printCustomerA4BarcodeBlocks(ScannedLine[] lines)
+    {
+        // 与原先 Block 1～20 顺序一致的左上角 Y（日期块占用顶端 5mm）
+        ReadOnlySpan<(float X, float YTop)> slots =
+        [
+            (15f, 10f), (85f, 10f), (155f, 10f), (225f, 10f),
+            (15f, 50f), (85f, 50f), (155f, 50f), (225f, 50f),
+            (15f, 90f), (85f, 90f), (155f, 90f), (225f, 90f),
+            (15f, 130f), (15f, 170f), (85f, 130f), (155f, 130f),
+            (225f, 130f), (85f, 170f), (155f, 170f), (225f, 170f)
+        ];
+
+        const float cellW = 50f;
+        const float dateH = 5f;
+        const float barcodeBarsH = 14f;
+        const float barcodeCaptionH = 6f;
+        // 日期 + 条纹 + 文字：5 + 14 + 6 = 25mm（与原 5 + 20mm 条码格一致）
+
+        var list = new List<PrintBlock>();
+        for (var i = 0; i < lines.Length && i < slots.Length; i++)
+        {
+            var (x, yTop) = slots[i];
+            var dateStr = lines[i].ProductionTime?.ToString("yyyyMMdd") ?? "";
+            var code = lines[i].Code;
+
+            list.Add(new PrintBlock
+            {
+                Name = $"Date {i + 1}",
+                X = x,
+                Y = yTop,
+                Width = cellW,
+                Height = dateH,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = dateStr,
+                    FontName = "Arial",
+                    FontSize = 11f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            });
+
+            var yBarcode = yTop + dateH;
+            list.Add(new PrintBlock
+            {
+                Name = $"Block {i + 1}",
+                X = x,
+                Y = yBarcode,
+                Width = cellW,
+                Height = barcodeBarsH,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Barcode = new BarcodeElement
+                {
+                    Value = code,
+                    SafeMarginMm = 1f,
+                    Format = "CODE_128",
+                    OffsetXMm = 0f,
+                    ShowTextBelow = false
+                }
+            });
+
+            list.Add(new PrintBlock
+            {
+                Name = $"BarcodeText {i + 1}",
+                X = x,
+                Y = yBarcode + barcodeBarsH,
+                Width = cellW,
+                Height = barcodeCaptionH,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = code,
+                    FontName = "Arial",
+                    FontSize = 12f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            });
+        }
+
+        return list;
+    }
+
+    List<PrintBlock> print30x12()
+    {
+        String dateStr = _date.Value.ToString("yyyyMMdd");
+        // int suffixWidth = 5;
+        // var codeTemplate = $"JC{MachineNo}{PO}{{index:{suffixWidth}}}";
+
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "测试日期",
+                X = 1,
+                Y = 1,
+                Width = 28,
+                Height = 2,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = dateStr,
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 1,
+                Y = 3,
+                Width = 27,
+                Height = 6,
+                ShowBorder = false,
+                Barcode = new BarcodeElement
+                {
+                    Value = ZYCode,
+                    SafeMarginMm = 0.5f
+                }
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 1,
+                Y = 9,
+                Width = 28,
+                Height = 2,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = ZYCode,
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            // new PrintBlock
+            // {
+            //     Name = "Block 4",
+            //     X = 1,
+            //     Y = 14,
+            //     Width = 28,
+            //     Height = 2,
+            //     ShowBorder = false,
+            //     Text = new TextElement
+            //     {
+            //         Content = dateStr,
+            //         FontName = "Arial",
+            //         FontSize = 6f,
+            //         Bold = false,
+            //         Align = "center",
+            //         VerticalAlign = "middle"
+            //     },
+            // },
+            // new PrintBlock
+            // {
+            //     Name = "Block 5",
+            //     X = 1,
+            //     Y = 16,
+            //     Width = 27,
+            //     Height = 6,
+            //     ShowBorder = false,
+            //     Barcode = new BarcodeElement
+            //     {
+            //         Value = ZYCode,
+            //         SafeMarginMm =  0.5f
+            //     }
+            // },
+            // new PrintBlock
+            // {
+            //     Name = "Block 6",
+            //     X = 1,
+            //     Y = 22,
+            //     Width = 28,
+            //     Height = 2,
+            //     ShowBorder = false,
+            //     Text = new TextElement
+            //     {
+            //         Content = ZYCode,
+            //         FontName = "Arial",
+            //         FontSize = 6f,
+            //         Bold = true,
+            //         Align = "center",
+            //         VerticalAlign = "middle"
+            //     },
+            // }
+        };
+
+        return list;
+    }
+
+    List<PrintBlock> print34x34()
+    {
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "测试日期",
+                X = 6f,
+                Y = 6f,
+                Width = 22f,
+                Height = 22f,
+                ShowBorder = false,
+                Qr = new QrElement()
+                {
+                    Value = ZYCode,
+                    SafeMarginMm = SafeMargin
+                }
+            },
+        };
+
+        return list;
+    }
+
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .scan-table-wrap {
+        height: 320px;
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+    }
+</style>

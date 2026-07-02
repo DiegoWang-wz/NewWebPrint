@@ -1,0 +1,1608 @@
+﻿@page "/LabelPrintForSideMark"
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Globalization
+@using System.Text.Json
+@using System.Net.Http.Json
+@using Microsoft.JSInterop
+@using NewWebPrint.Models.Api
+@using NewWebPrint.Services.SapEwm
+@using JsonSerializer = System.Text.Json.JsonSerializer
+@implements IDisposable
+@inject ISapEwmService SapEwmService
+
+@rendermode InteractiveServer
+
+<MudGrid Class="pa-4 py-3 side-mark-page"
+         GutterSize="2"
+         Justify="Justify.Center"
+         AlignItems="AlignItems.Start">
+    @if (_showPortPicker)
+    {
+        <MudOverlay Visible="true" DarkBackground="true" ZIndex="2000">
+            <MudPaper Class="pa-4" Style="width:420px; max-width:90vw;">
+                <MudText Typo="Typo.h6" Class="mb-2">选择称重串口</MudText>
+                <MudText Typo="Typo.caption" Class="mb-2 d-block">请选择本次用于称重的 COM 口</MudText>
+                <MudSelect T="string" Label="COM口" @bind-Value="_backendPortName" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var p in _availableBackendPorts)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd" Class="mt-3">
+                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="CancelPortPicker">取消</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmPortPickerAsync">确定并连接</MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudOverlay>
+    }
+
+    <MudItem xs="12" xl="12">
+        <MudPaper Outlined="true" Class="pa-3 mb-3 section-box">
+            <MudGrid Spacing="2" AlignItems="AlignItems.Stretch">
+                <MudItem xs="12" md="9">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField T="string" Label="请输入生产订单号" @bind-Value="ProductionOrder"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField T="string" Label="请输入销售/发货订单号" @bind-Value="DeliveryOrSalesOrderNo"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                    </MudGrid>
+                </MudItem>
+                <MudItem xs="12" md="3" Class="d-flex">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchSubmit"
+                               Disabled="@IsSearching" FullWidth="true" Class="action-btn search-btn-tall">
+                        @(IsSearching ? "查询中…" : "查询")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <div class="mb-3">
+            @if (IsSearching)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2"/>
+            }
+            <div class="table-wrap">
+                <MudTable Items="@_tableRows"
+                          T="SapEwmDynamicPayload"
+                          Dense="true"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          OnRowClick="OnTableRowClick"
+                          Class="order-detail-table">
+                    <HeaderContent>
+                        <MudTh>车间</MudTh>
+                        <MudTh>客户</MudTh>
+                        <MudTh>客户编码</MudTh>
+                        <MudTh>生产订单</MudTh>
+                        <MudTh>销售订单</MudTh>
+                        <MudTh>物料代码</MudTh>
+                        <MudTh>物料名称</MudTh>
+                        <MudTh>规格型号</MudTh>
+                        <MudTh>订单数量</MudTh>
+                            <MudTh>侧唛是否带JCLOGO</MudTh>
+                        <MudTh>客户物料标识</MudTh>
+                            <MudTh>客户物料名称</MudTh>
+                            <MudTh>客户PO</MudTh>
+                            <MudTh>中文标识</MudTh>
+                            <MudTh>VBBP-ZI10</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.GetString("plant")</MudTd>
+                        <MudTd>@context.GetString("customerName")</MudTd>
+                        <MudTd>@context.GetString("customerCode")</MudTd>
+                        <MudTd>@context.GetString("orderNo")</MudTd>
+                        <MudTd>@context.GetString("SalesOrderNo")</MudTd>
+                        <MudTd>@context.GetString("materialCode")</MudTd>
+                        <MudTd>@context.GetString("materialName")</MudTd>
+                        <MudTd>@context.GetString("materialModel_zh")</MudTd>
+                        <MudTd>@context.GetString("orderQuantity")</MudTd>
+                            <MudTd>@context.GetString("jclogoText", "HaveJiecangLOGO")</MudTd>
+                        <MudTd>@context.GetString("materialCodebyClient")</MudTd>
+                            <MudTd>@context.GetString("materialNamebyClient")</MudTd>
+                            <MudTd>@context.GetString("ZOGEN", "ZCPON")</MudTd>
+                            <MudTd>@context.GetString("ZMTYPE", "中文标识")</MudTd>
+                            <MudTd>@context.GetString("ZI10", "STTXT")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Align="Align.Center" Typo="Typo.body2">暂无数据</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </div>
+        </div>
+
+        <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+            <MudItem xs="12" md="6" Class="d-flex">
+                <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel">
+                    <MudGrid Spacing="1">
+                        <MudItem xs="12">
+                            <div class="result-list-grid">
+                                <div class="result-list-item">
+                                    <span class="result-list-label">客户</span>
+                                    <span class="result-list-value">@(_data?.GetString("customerName") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">客户物料</span>
+                                    <span
+                                        class="result-list-value">@(_data?.GetString("materialNamebyClient") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">客户编码</span>
+                                    <span class="result-list-value">@(_data?.GetString("customerCode") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">物料代码</span>
+                                    <span class="result-list-value">@(_data?.GetString("materialCode") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">产品名称</span>
+                                    <span class="result-list-value">@(_data?.GetString("materialName") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">中文标识</span>
+                                    <span class="result-list-value">@(_data?.GetString("ZMTYPE", "中文标识") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">销售订单</span>
+                                    <span class="result-list-value">@(_data?.GetString("SalesOrderNo") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">生产订单</span>
+                                    <span class="result-list-value">@(_data?.GetString("orderNo") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">侧唛类型</span>
+                                    <span
+                                        class="result-list-value">@(string.IsNullOrWhiteSpace(LabelType) ? "-" : LabelType)</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">客户PO</span>
+                                    <span class="result-list-value">@(_data?.GetString("ZOGEN") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">客户物料标识</span>
+                                    <span
+                                        class="result-list-value">@(_data?.GetString("materialCodebyClient") ?? "-")</span>
+                                </div>
+                                <div class="result-list-item">
+                                    <span class="result-list-label">BI10</span>
+                                    <span class="result-list-value">@Bi10Value</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-1 row-strong">
+                                <MudCheckBox T="bool" @bind-Value="IsInventoryOrder" Label="备库订单"
+                                             Class="row-strong"/>
+                                <MudCheckBox T="bool" @bind-Value="Rotate90" Label="旋转90°" Class="row-strong"/>
+                                <MudSpacer/>
+                                <div class="reprint-range">
+                                    <MudText Typo="Typo.body2">补打序列号:</MudText>
+                                    <MudTextField T="string"
+                                                  @bind-Value="ReprintSerialStart"
+                                                  Class="reprint-input"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"/>
+                                    <MudText Typo="Typo.body2" Class="mx-1">-</MudText>
+                                    <MudTextField T="string"
+                                                  @bind-Value="ReprintSerialEnd"
+                                                  Class="reprint-input"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"/>
+                                </div>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudGrid Spacing="1" AlignItems="AlignItems.End" Class="mt-1">
+                                <MudItem xs="12" md="4">
+                                    <MudGrid Spacing="1" AlignItems="AlignItems.End">
+                                        <MudItem xs="12" sm="5" Class="weight-btn-cell">
+                                            <MudButton Variant="Variant.Filled"
+                                                       Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                                       OnClick="@EnableWeight"
+                                                       FullWidth="true"
+                                                       Class="weight-btn mt-2">
+                                                @(_isSerialOpen ? "断开称重器" : "开启称重")
+                                            </MudButton>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="7">
+                                            <MudTextField T="string" Label="工号" @bind-Value="UserId"
+                                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                        </MudItem>
+                                    </MudGrid>
+                                </MudItem>
+                                <MudSpacer/>
+                                <MudItem xs="12" md="6">
+                                    <MudGrid Spacing="1" AlignItems="AlignItems.End" Justify="Justify.FlexEnd">
+                                        <MudItem xs="4" sm="4">
+                                            <MudTextField T="string" Label="称重"
+                                                          @bind-Value="WeightActual"
+                                                          Margin="Margin.Dense"
+                                                          Variant="Variant.Outlined"
+                                                          ReadOnly="true"/>
+                                        </MudItem>
+                                        <MudItem xs="4" sm="4">
+                                            <MudTextField T="string" Label="标重"
+                                                          @bind-Value="WeightStandard"
+                                                          Margin="Margin.Dense"
+                                                          Variant="Variant.Outlined"
+                                                          Disabled="@(!_isSerialOpen)"/>
+                                        </MudItem>
+                                        <MudItem xs="4" sm="4">
+                                            <MudTextField T="string" Label="公差"
+                                                          @bind-Value="WeightTolerance"
+                                                          Margin="Margin.Dense"
+                                                          Variant="Variant.Outlined"
+                                                          ReadOnly="true"/>
+                                        </MudItem>
+                                    </MudGrid>
+                                </MudItem>
+                            </MudGrid>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6" Class="d-flex">
+                <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel">
+                    <MudGrid Spacing="1">
+                        <MudItem xs="6">
+                            <MudTextField T="string" Label="请输入客户的简称" @bind-Value="CustomerShortName"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" Label="请选择打印机" @bind-Value="SelectedPrinter"
+                                       Margin="Margin.Dense" Variant="Variant.Outlined">
+                                @foreach (var p in Printers)
+                                {
+                                    <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="2">
+                            <MudTextField T="string" Label="此箱数量" @bind-Value="BoxPCS" Margin="Margin.Dense"
+                                          Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="2">
+                            <MudTextField T="string" Label="打印份数" @bind-Value="StablePrintCount"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="交货日期" @bind-Date="PrintDate" Margin="Margin.Dense"
+                                           Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                           Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField T="string" Label="顾家送货单号" @bind-Value="GujiaFireWorkOrderNo"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField T="string" Label="序号抬头" @bind-Value="SerialPrefix" Margin="Margin.Dense"
+                                          Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="checkbox-row">
+                                <MudCheckBox T="bool" @bind-Value="IsGujiaSideMarkPrint" Label="顾家侧唛打印"/>
+                                <MudCheckBox T="bool" @bind-Value="IsAddProductionSerialPrint"
+                                             Label="增加生产序号打印"/>
+                                <MudCheckBox T="bool" @bind-Value="IsYinaSideMarkPrint" Label="伊那侧唛打印"/>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="PrintSubmit"
+                                       Disabled="@IsPrinting" FullWidth="true" Class="action-btn">
+                                @(IsPrinting ? "打印中…" : "直接打印")
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <div>
+                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="200"/>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </MudItem>
+</MudGrid>
+
+<style>
+    .side-mark-page {
+        min-height: 88vh;
+    }
+
+    .section-box {
+        border-radius: 6px;
+    }
+
+    .section-title {
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+
+    .action-btn {
+        min-height: 46px;
+        font-weight: 600;
+    }
+
+    .weight-btn-cell {
+        display: flex;
+    }
+
+    .weight-btn {
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
+    }
+
+    .search-btn-tall {
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+        font-size: clamp(1rem, 1.2vw, 1.5rem) !important;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .table-wrap {
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        max-height: 146px;
+    }
+
+    .order-detail-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .order-detail-table th {
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+
+    .order-detail-table td {
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        vertical-align: middle;
+        line-height: 1.25;
+    }
+
+    .result-panel {
+        min-height: 280px;
+    }
+
+    .equal-height-panel {
+        width: 100%;
+        height: 100%;
+    }
+
+    .keypad-box {
+        min-height: 280px;
+    }
+
+    .bi10-input {
+        min-width: 120px;
+        max-width: 180px;
+    }
+
+    .row-strong {
+        color: #111;
+        font-weight: 700;
+    }
+
+    .plain-chip {
+        min-width: 100px;
+        padding: 4px 10px;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+        background: #fafafa;
+        color: #111;
+        font-weight: 700;
+        line-height: 24px;
+        text-align: center;
+    }
+
+    .result-list-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+    }
+
+    .result-list-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        border-bottom: 1px dashed #e0e0e0;
+        padding-bottom: 2px;
+    }
+
+    .result-list-item-full {
+        grid-column: 1 / -1;
+    }
+
+    .result-list-label {
+        color: #c62828;
+        min-width: 72px;
+        flex-shrink: 0;
+        font-size: 0.9rem;
+        font-weight: 700;
+    }
+
+    .result-list-value {
+        color: #111;
+        font-size: 0.92rem;
+        line-height: 1.2;
+        word-break: break-word;
+        font-weight: 700;
+    }
+
+    .reprint-range {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #111;
+        font-weight: 700;
+    }
+
+    .reprint-input {
+        width: 60px;
+    }
+
+    .checkbox-row {
+        flex-wrap: wrap;
+    }
+</style>
+
+@code {
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+    string LabelType { get; set; } = "";
+    DateTime? PrintDate { get; set; } = DateTime.Today;
+    string StablePrintCount { get; set; } = "1";
+    string BoxPCS { get; set; } = "1";
+    bool IsInventoryOrder { get; set; }
+    bool Rotate90 { get; set; }
+    string Bi10Value { get; set; } = "";
+    string ReprintSerialStart { get; set; } = "0";
+    string ReprintSerialEnd { get; set; } = "0";
+    string UserId { get; set; } = "";
+    private string _weightActual = string.Empty;
+
+    string WeightActual
+    {
+        get => _weightActual;
+        set
+        {
+            _weightActual = value ?? string.Empty;
+            RecalculateWeightTolerance();
+        }
+    }
+
+    private string _weightStandard = string.Empty;
+
+    string WeightStandard
+    {
+        get => _weightStandard;
+        set
+        {
+            _weightStandard = value ?? string.Empty;
+            RecalculateWeightTolerance();
+        }
+    }
+
+    string WeightTolerance { get; set; } = "";
+    string CustomerShortName { get; set; } = "";
+    string GujiaFireWorkOrderNo { get; set; } = "";
+    DateTime? ProductionDate { get; set; } = DateTime.Today;
+    string SerialPrefix { get; set; } = "JC";
+    bool IsGujiaSideMarkPrint { get; set; }
+    bool IsAddProductionSerialPrint { get; set; }
+    bool IsYinaSideMarkPrint { get; set; }
+
+    private SapEwmDynamicPayload? _data;
+    private List<SapEwmDynamicPayload> _tableRows = new();
+    string ProductionOrder { get; set; } = "";
+    string DeliveryOrSalesOrderNo { get; set; } = "11292604";
+    bool IsSearching { get; set; }
+    private bool _isSerialOpen;
+    private DotNetObjectReference<LabelPrintForSideMark>? _objRef;
+
+    protected override void OnInitialized()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+    }
+    private CancellationTokenSource? _weightPollCts;
+    private bool _isWeightReading;
+    private string _backendPortName = "COM14";
+    private const int WeightPollIntervalMs = 500;
+    private const int WeightReadTimeoutMs = 1200;
+    private bool _showPortPicker;
+    private List<string> _availableBackendPorts = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "TrayLabel_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    async Task EnableWeight()
+    {
+        const string validUser = "100660";
+        if (UserId?.Trim() != validUser)
+        {
+            SnackbarHelper.Show($"工号必须为 {validUser} 才能连接称重器", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_isSerialOpen)
+            {
+                await StopWeightPollingAsync();
+                _isSerialOpen = false;
+                SnackbarHelper.Show("称重器已停止", Severity.Info);
+                AppendLog("后端称重轮询已停止");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            await ShowPortPickerAsync();
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"称重器连接异常: {ex.Message}", Severity.Error);
+            AppendLog($"称重器连接异常: {ex.Message}");
+        }
+    }
+
+    private void StartWeightPolling()
+    {
+        _weightPollCts?.Cancel();
+        _weightPollCts?.Dispose();
+        _weightPollCts = new CancellationTokenSource();
+        _ = Task.Run(() => PollWeightLoopAsync(_weightPollCts.Token));
+    }
+
+    private async Task StopWeightPollingAsync()
+    {
+        if (_weightPollCts is null) return;
+        try
+        {
+            _weightPollCts.Cancel();
+            await Task.Delay(30);
+        }
+        catch { }
+        finally
+        {
+            _weightPollCts.Dispose();
+            _weightPollCts = null;
+        }
+    }
+
+    private async Task PollWeightLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && _isSerialOpen)
+        {
+            await ReadWeightByBackendOnceAsync();
+            try
+            {
+                await Task.Delay(WeightPollIntervalMs, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task<bool> EnsureBackendComPortAsync()
+    {
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri(NavManager.BaseUri) };
+            var resp = await client.GetFromJsonAsync<LocalSerialPortsResponse>("/api/serial/local/ports");
+            var ports = resp?.ports ?? new List<string>();
+            if (ports.Count == 0) return false;
+            _availableBackendPorts = ports;
+            if (!ports.Contains(_backendPortName, StringComparer.OrdinalIgnoreCase))
+                _backendPortName = ports[0];
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"读取本地串口列表失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task ShowPortPickerAsync()
+    {
+        var ready = await EnsureBackendComPortAsync();
+        if (!ready)
+        {
+            SnackbarHelper.Show("未找到可用串口，请检查设备连接", Severity.Error);
+            return;
+        }
+
+        _showPortPicker = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelPortPicker()
+    {
+        _showPortPicker = false;
+    }
+
+    private async Task ConfirmPortPickerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_backendPortName))
+        {
+            SnackbarHelper.Show("请先选择串口", Severity.Warning);
+            return;
+        }
+
+        _showPortPicker = false;
+        _isSerialOpen = true;
+        StartWeightPolling();
+        SnackbarHelper.Show($"称重器已连接（后端：{_backendPortName}）", Severity.Success);
+        AppendLog($"后端称重轮询已启动，端口={_backendPortName}，间隔={WeightPollIntervalMs}ms");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReadWeightByBackendOnceAsync()
+    {
+        if (_isWeightReading || !_isSerialOpen) return;
+        _isWeightReading = true;
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri(NavManager.BaseUri) };
+            var body = new
+            {
+                portName = _backendPortName,
+                baudRate = 19200,
+                parity = "none",
+                dataBits = 8,
+                stopBits = "One",
+                timeoutMs = WeightReadTimeoutMs,
+                dtrEnable = true,
+                rtsEnable = true,
+                newLine = "\r\n"
+            };
+
+            var httpResp = await client.PostAsJsonAsync("/api/serial/local/read-once", body);
+            var result = await httpResp.Content.ReadFromJsonAsync<LocalSerialReadResponse>();
+            if (result?.ok == true)
+            {
+                var weight = (result.weight ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(weight))
+                    WeightActual = weight;
+            }
+            else if (!string.IsNullOrWhiteSpace(result?.message) && !result.message.Contains("超时时间内没有读到数据"))
+            {
+                AppendLog($"后端称重读取失败: {result!.message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"后端称重异常: {ex.Message}");
+        }
+        finally
+        {
+            _isWeightReading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task SearchSubmit()
+    {
+        if (IsSearching) return;
+        var po = ProductionOrder?.Trim();
+        var so = DeliveryOrSalesOrderNo?.Trim();
+        if (string.IsNullOrWhiteSpace(po) && string.IsNullOrWhiteSpace(so))
+        {
+            SnackbarHelper.Show("请输入生产订单号或销售/发货订单号", Severity.Warning);
+            return;
+        }
+
+        IsSearching = true;
+        _data = null;
+        _tableRows.Clear();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            List<SapEwmDynamicPayload> resultRows = new();
+            if (!string.IsNullOrWhiteSpace(po))
+            {
+                // 与原 WinForm 一致：按生产单查询时固定中文参数 lang=1
+                var response = await SapEwmService.InvokeDynamicAsync(
+                    "GetProductInfo",
+                    new Dictionary<string, string?> { ["po"] = po, ["lang"] = "1" },
+                    logToBrowserConsole: true);
+                if (response.Code != ApiResultCode.Success || response.Data is null)
+                {
+                    SnackbarHelper.Show(response.Message, Severity.Error);
+                    return;
+                }
+
+                resultRows.Add(NormalizeSapPayload(response.Data));
+            }
+            else
+            {
+                // 与原 WinForm 一致：销售单先查 GetSaleInfoCM，失败再回退 GetDeliveryInfoCM
+                resultRows = await QueryBySalesOrDeliveryAsync(so!);
+                if (resultRows.Count == 0)
+                {
+                    SnackbarHelper.Show("未找到对应订单数据", Severity.Warning);
+                    return;
+                }
+            }
+
+            _tableRows = resultRows;
+            _data = _tableRows[0];
+            LabelType = _data.GetString("jclogoText", "HaveJiecangLOGO") ?? string.Empty;
+            Bi10Value = _data.GetString("ZI10", "STTXT") ?? string.Empty;
+
+            SnackbarHelper.Show("查询成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task<List<SapEwmDynamicPayload>> QueryBySalesOrDeliveryAsync(string so)
+    {
+        var rows = new List<SapEwmDynamicPayload>();
+        var saleResponse = await SapEwmService.InvokeAsync(
+            "GetSaleInfoCM",
+            new Dictionary<string, string?> { ["so"] = so },
+            logToBrowserConsole: true);
+        rows = ExtractPayloadListFromInvoke(saleResponse.Data)
+            .Select(NormalizeSapPayload)
+            .ToList();
+        if (rows.Count > 0)
+            return rows;
+
+        var deliveryResponse = await SapEwmService.InvokeAsync(
+            "GetDeliveryInfoCM",
+            new Dictionary<string, string?> { ["so"] = so },
+            logToBrowserConsole: true);
+        return ExtractPayloadListFromInvoke(deliveryResponse.Data)
+            .Select(NormalizeSapPayload)
+            .ToList();
+    }
+
+    List<SapEwmDynamicPayload> ExtractPayloadListFromInvoke(SapEwmInvokeResult? invokeResult)
+    {
+        var result = new List<SapEwmDynamicPayload>();
+        if (invokeResult is null || !invokeResult.Success)
+            return result;
+
+        var raw = invokeResult.ResultText ?? invokeResult.JsonResult;
+        if (string.IsNullOrWhiteSpace(raw))
+            return result;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                result.Add(SapEwmDynamicPayload.FromJson(
+                    doc.RootElement.GetRawText(),
+                    invokeResult.RawSoapResponse,
+                    invokeResult.Endpoint,
+                    invokeResult.Network,
+                    invokeResult.SoapVersion));
+                return result;
+            }
+
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    result.Add(SapEwmDynamicPayload.FromJson(
+                        item.GetRawText(),
+                        invokeResult.RawSoapResponse,
+                        invokeResult.Endpoint,
+                        invokeResult.Network,
+                        invokeResult.SoapVersion));
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return result;
+    }
+
+    void OnTableRowClick(TableRowClickEventArgs<SapEwmDynamicPayload> args)
+    {
+        if (args.Item is null)
+            return;
+
+        _data = args.Item;
+        LabelType = _data.GetString("jclogoText", "HaveJiecangLOGO") ?? string.Empty;
+        Bi10Value = _data.GetString("ZI10", "STTXT") ?? string.Empty;
+    }
+
+    SapEwmDynamicPayload NormalizeSapPayload(SapEwmDynamicPayload payload)
+    {
+        var map = new Dictionary<string, JsonElement>(payload.Fields, StringComparer.OrdinalIgnoreCase);
+
+        SetJsonField(map, "orderNo", TrimLeadingZeros(payload.GetString("orderNo")));
+        SetJsonField(map, "SalesOrderNo", TrimLeadingZeros(payload.GetString("SalesOrderNo")));
+        SetJsonField(map, "materialCode", TrimLeadingZeros(payload.GetString("materialCode")));
+
+        var customerName = FirstNonEmpty(payload, "customerName", "client");
+        var customerCode = TrimLeadingZeros(FirstNonEmpty(payload, "customerCode", "clientno"));
+        var materialCodeByClient = FirstNonEmpty(payload, "materialCodebyClient", "goodsmark");
+        var materialNameByClient = FirstNonEmpty(payload, "materialNamebyClient", "materialModel_en");
+        var zogen = FirstNonEmpty(payload, "ZOGEN", "ZCPON");
+        var jclogo = FirstNonEmpty(payload, "jclogoText", "HaveJiecangLOGO");
+        var zi10 = FirstNonEmpty(payload, "ZI10", "STTXT");
+        var zmType = FirstNonEmpty(payload, "ZMTYPE", "中文标识");
+
+        SetJsonField(map, "customerName", customerName);
+        SetJsonField(map, "client", customerName);
+        SetJsonField(map, "customerCode", customerCode);
+        SetJsonField(map, "clientno", customerCode);
+        SetJsonField(map, "materialCodebyClient", materialCodeByClient);
+        SetJsonField(map, "goodsmark", materialCodeByClient);
+        SetJsonField(map, "materialNamebyClient", materialNameByClient);
+        SetJsonField(map, "materialModel_en", materialNameByClient);
+        SetJsonField(map, "ZOGEN", zogen);
+        SetJsonField(map, "ZCPON", zogen);
+        SetJsonField(map, "jclogoText", jclogo);
+        SetJsonField(map, "HaveJiecangLOGO", jclogo);
+        SetJsonField(map, "ZI10", zi10);
+        SetJsonField(map, "STTXT", zi10);
+        SetJsonField(map, "ZMTYPE", zmType);
+        SetJsonField(map, "中文标识", zmType);
+
+        return new SapEwmDynamicPayload(
+            payload.Success,
+            payload.RawJson,
+            map,
+            payload.RawSoapResponse,
+            payload.Error,
+            payload.InvokeEndpoint,
+            payload.InvokeNetwork,
+            payload.InvokeSoapVersion);
+    }
+
+    static string? FirstNonEmpty(SapEwmDynamicPayload payload, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = payload.GetString(key);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
+    }
+
+    static void SetJsonField(Dictionary<string, JsonElement> map, string key, string? value)
+    {
+        var json = JsonSerializer.Serialize(value ?? string.Empty);
+        using var doc = JsonDocument.Parse(json);
+        map[key] = doc.RootElement.Clone();
+    }
+
+    static string TrimLeadingZeros(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var text = value.Trim();
+        var i = 0;
+        while (i < text.Length - 1 && text[i] == '0')
+            i++;
+        return text[i..];
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task ReceiveData(string data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+        WeightActual = data.Trim();
+        AppendLog($"称重器数据: {WeightActual}");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnError(string errorMessage)
+    {
+        _isSerialOpen = false;
+        AppendLog($"串口错误: {errorMessage}");
+        SnackbarHelper.Show(errorMessage, Severity.Error);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void RecalculateWeightTolerance()
+    {
+        if (!TryParseDecimal(WeightActual, out var actual))
+        {
+            WeightTolerance = string.Empty;
+            return;
+        }
+
+        if (!TryParseDecimal(WeightStandard, out var standard))
+        {
+            WeightTolerance = string.Empty;
+            return;
+        }
+
+        var tolerance = actual - standard;
+        WeightTolerance = tolerance.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    static bool TryParseDecimal(string? text, out decimal value)
+    {
+        if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+            return true;
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (_data == null)
+        {
+            SnackbarHelper.Show("请先查询生产订单获取订单数据", Severity.Warning);
+            return;
+        }
+
+        if (!int.TryParse(StablePrintCount?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var copies) || copies <= 0)
+        {
+            SnackbarHelper.Show("打印份数必须为正整数", Severity.Warning);
+            return;
+        }
+
+        copies = Math.Min(copies, 100);
+
+        if (!int.TryParse(ReprintSerialStart?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var serialStart) ||
+            !int.TryParse(ReprintSerialEnd?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var serialEnd) ||
+            serialStart > serialEnd)
+        {
+            SnackbarHelper.Show("请填写有效的补打序列号（整数，且起始≤结束）", Severity.Warning);
+            return;
+        }
+
+        const int maxSerialSpan = 500;
+        var serialPrintCount = serialEnd - serialStart + 1;
+        if (serialPrintCount > maxSerialSpan)
+        {
+            SnackbarHelper.Show($"补打序列号跨度过大（一次最多 {maxSerialSpan} 个序号）", Severity.Warning);
+            return;
+        }
+
+        var materialCode = _data.GetString("materialCode") ?? string.Empty;
+        var materialName = _data.GetString("materialName") ?? string.Empty;
+        var materialMark = _data.GetString("materialCodebyClient") ?? string.Empty;
+        var chineseMark = _data.GetString("ZMTYPE", "中文标识") ?? string.Empty;
+        var materialMarkCombined = string.Join("|", new[] { chineseMark?.Trim(), materialMark?.Trim() }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        var customerMaterial = _data.GetString("materialNamebyClient") ?? string.Empty;
+        var orderNo = _data.GetString("orderNo") ?? string.Empty;
+        var salesNo = _data.GetString("SalesOrderNo") ?? string.Empty;
+        var customerCode = _data.GetString("customerCode") ?? string.Empty;
+        var customerName = _data.GetString("customerName") ?? string.Empty;
+        var customerNoText = $"{customerCode} {customerName}".Trim();
+        var qtyText = string.IsNullOrWhiteSpace(BoxPCS) ? "-" : BoxPCS.Trim();
+        var productionDateText = (ProductionDate ?? PrintDate ?? DateTime.Today).ToString("yyyy年MM月dd日", CultureInfo.InvariantCulture);
+        var qrSalesOrder = !string.IsNullOrWhiteSpace(salesNo) ? salesNo.Trim() : orderNo.Trim();
+        var qrMaterialCode = materialCode.Trim();
+        var qrValue = $"{qrSalesOrder}/{qrMaterialCode}/{{index}}";
+        var logoType = _data.GetString("jclogoText", "HaveJiecangLOGO") ?? LabelType ?? string.Empty;
+        var isStandardNoLogo = logoType.Contains("标准不带LOGO");
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        string img1 = PrinterHelper.ImageFileToBase64(imagePath);
+        var logoBlock = isStandardNoLogo
+            ? new PrintBlock
+            {
+                Name = "logo",
+                X = 7f,
+                Y = 8f,
+                Width = 61f,
+                Height = 9f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "物料标识",
+                    FontName = "Arial",
+                    FontSize = 17f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            }
+            : new PrintBlock
+            {
+                Name = "logo",
+                X = 7f,
+                Y = 8f,
+                Width = 61f,
+                Height = 9f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img1,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                }
+            };
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = 100f,
+            PaperHeightMm = 80f,
+            Copies = copies,
+            StartValue = serialStart,
+            PrintCount = serialPrintCount,
+            BorderThicknessMm = 0.4f,
+            Blocks = new List<PrintBlock>
+            {
+                logoBlock,
+                new PrintBlock
+                {
+                    Name = "二维码",
+                    X = 77f,
+                    Y = 6f,
+                    Width = 18f,
+                    Height = 14f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Qr = new QrElement
+                    {
+                        Value = qrValue,
+                        SafeMarginMm = 1f,
+                        ErrorCorrection = "M",
+                        Charset = "UTF-8"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3",
+                    X = 5f,
+                    Y = 22f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "销售订单：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "销售订单",
+                    X = 25f,
+                    Y = 22f,
+                    Width = 25f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = salesNo,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy",
+                    X = 50f,
+                    Y = 22f,
+                    Width = 18f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "物料编码:",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "物料编码",
+                    X = 68f,
+                    Y = 22f,
+                    Width = 27f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = materialCode,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy",
+                    X = 5f,
+                    Y = 28f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "客户编号：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "客户编号",
+                    X = 25f,
+                    Y = 28f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = customerNoText,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "物料名称",
+                    X = 5f,
+                    Y = 34f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "物料名称：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 8_copy_copy",
+                    X = 25f,
+                    Y = 34f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = materialName,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy_copy",
+                    X = 5f,
+                    Y = 40f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "物料标识：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "物料标识",
+                    X = 25f,
+                    Y = 40f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = materialMarkCombined,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy_copy",
+                    X = 5f,
+                    Y = 46f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "客户物料：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "客户物料",
+                    X = 25f,
+                    Y = 46f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = customerMaterial,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy_copy_copy",
+                    X = 5f,
+                    Y = 52f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "产品数量：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "产品数量",
+                    X = 25f,
+                    Y = 52f,
+                    Width = 25f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = $"{qtyText} Pcs",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "center",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy",
+                    X = 50f,
+                    Y = 52f,
+                    Width = 18f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "生产日期:",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "产品数量_copy",
+                    X = 68f,
+                    Y = 52f,
+                    Width = 27f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = productionDateText,
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy_copy_copy_copy",
+                    X = 5f,
+                    Y = 58f,
+                    Width = 21f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "公司名称：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "公司名称",
+                    X = 25f,
+                    Y = 58f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "浙江捷昌线性驱动科技股份有限公司",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3_copy_copy_copy_copy_copy_copy",
+                    X = 5f,
+                    Y = 64f,
+                    Width = 20f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "公司地址：",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "公司地址",
+                    X = 25f,
+                    Y = 64f,
+                    Width = 70f,
+                    Height = 6f,
+                    ShowBorder = true,
+                    BorderTopMm = 0f,
+                    BorderRightMm = 0f,
+                    BorderBottomMm = 0.2f,
+                    BorderLeftMm = 0f,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "浙江省新昌县省级高新技术产业园区",
+                        FontName = "Arial",
+                        FontSize = 9f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 23",
+                    X = 3f,
+                    Y = 4f,
+                    Width = 95f,
+                    Height = 71f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = "",
+                        FontName = "Arial",
+                        FontSize = 6f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    }
+                }
+            }
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送基础打印：{SelectedPrinter}，份数 {copies}");
+
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "TrayLabel_printer");
+
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _weightPollCts?.Cancel();
+        _weightPollCts?.Dispose();
+        _objRef?.Dispose();
+    }
+
+    private sealed class LocalSerialPortsResponse
+    {
+        public bool ok { get; set; }
+        public List<string>? ports { get; set; }
+        public string? message { get; set; }
+    }
+
+    private sealed class LocalSerialReadResponse
+    {
+        public bool ok { get; set; }
+        public string? raw { get; set; }
+        public string? weight { get; set; }
+        public string? message { get; set; }
+    }
+
+}

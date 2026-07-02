@@ -1,0 +1,230 @@
+﻿@page "/LabelPrintForOffice"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using System.Text.Encodings.Web
+@using System.Text
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudText Typo="Typo.h5" Class="mb-2">办公标签打印</MudText>
+    <MudTabs Elevation="2" Rounded="true" Class="px-4 py-2 ma-2 tab-background" @bind-ActivePanelIndex="activeIndex"
+             ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="40×25">
+            <MudGrid Class="pa-2" GutterSize="2">
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string"
+                               Label="@T["SelectPrinter"]"
+                               @bind-Value="SelectedPrinter"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Print"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               FullWidth="true">
+                        @foreach (var p in Printers)
+                        {
+                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                @* <MudItem xs="12" md="6"> *@
+                @*     <MudTextField @bind-Value="ImporterCompany" Label="Importer Company" Variant="Variant.Outlined" *@
+                @*                  Margin="Margin.Dense" FullWidth="true"/> *@
+                @* </MudItem> *@
+                @* <MudItem xs="12" md="6"> *@
+                @*     <MudTextField @bind-Value="Address" Label="Address" Variant="Variant.Outlined" *@
+                @*                  Margin="Margin.Dense" FullWidth="true"/> *@
+                @* </MudItem> *@
+                <MudItem xs="12" md="6" Class="d-flex align-center">
+                    <MudStack Row="true" Spacing="2" Class="w-100">
+                        <MudNumericField @bind-Value="PrintCount" Margin="Margin.Dense" Label="打印数量"
+                                         Variant="Variant.Outlined" Min="1"/>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   OnClick="PrintSubmit"
+                                   Disabled="@IsPrinting"
+                                   Size="Size.Large"
+                                   Style="height:64px; font-size:1.2rem; font-weight:600; width: 150px">
+                            @(IsPrinting ? T["Printing"] : T["Print"])
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudPaper Class="pa-2" Style="height:100%;">
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">@T["InHereOutPutMsg"]</MudText>
+                        <MudTextField Value="@PrintMessages"
+                                      ReadOnly="true"
+                                      Lines="12"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="@T["InHereOutPutMsg"]"
+                                      Class="font-monospace"
+                                      Style="width:100%; height:100%;"/>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+    </MudTabs>
+</MudStack>
+
+@code {
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    string ImporterCompany { get; set; } = string.Empty;
+    string Address { get; set; } = string.Empty;
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+    int PrintCount { get; set; } = 1;
+    int activeIndex { get; set; } = 0;
+
+    const float PaperWidthMm40x25 = 40f;
+    const float PaperHeightMm40x25 = 25f;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "LabelPrintForOffice_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 40×25 标签的 blocks 模板，内容可在此方法内自行添加。
+    /// </summary>
+    List<PrintBlock> GetBlocks40x25()
+    {
+        return new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 0f,
+                Y = 7f,
+                Width = 40f,
+                Height = 4f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = " Importer Company: Edit Office",
+                    FontName = "Arial",
+                    FontSize = 7.5f,
+                    Bold = false,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 0f,
+                Y = 11f,
+                Width = 40f,
+                Height = 4f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = " Address: Dublin D24 RY89,",
+                    FontName = "Arial",
+                    FontSize = 7.5f,
+                    Bold = false,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 0f,
+                Y = 15f,
+                Width = 40f,
+                Height = 4f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "lreland",
+                    FontName = "Arial",
+                    FontSize = 7.5f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            }
+
+        };
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        var blocks = GetBlocks40x25();
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm40x25,
+            PaperHeightMm = PaperHeightMm40x25,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            Blocks = blocks
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}，40×25，{PrintCount} 张");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForOffice_printer");
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>

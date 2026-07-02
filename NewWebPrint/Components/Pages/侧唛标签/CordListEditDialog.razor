@@ -1,0 +1,81 @@
+﻿@using NewWebPrint.DataDtos
+@using NewWebPrint.Models
+@using NewWebPrint.Utilities
+@using MudBlazor
+@inject SnackbarHelper SnackbarHelper
+
+<MudDialog>
+    <TitleContent>@(IsEdit ? "编辑 CORD" : "新增 CORD")</TitleContent>
+    <DialogContent>
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="EditItem.JCPartNumber" Label="JC Part Number" Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="EditItem.LDPartNumber" Label="LD Part Number" Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="EditItem.SupplierName" Label="Supplier Name" Variant="Variant.Outlined" FullWidth="true" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="EditItem.LDPartName" Label="LD Part Name" Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="EditItem.RevisionNumber" Label="Revision Number" Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="EditItem.PackageWeight" Label="Package Weight" Variant="Variant.Outlined" FullWidth="true" Min="0" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="EditItem.Quantity" Label="Quantity" Variant="Variant.Outlined" FullWidth="true" Min="1" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">取消</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">保存</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public MudBlazor.IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter]
+    public CordListDto? Item { get; set; }
+
+    [Parameter]
+    public bool IsEdit { get; set; }
+
+    private CordListDto EditItem { get; set; } = new();
+
+    protected override void OnInitialized()
+    {
+        if (Item != null)
+        {
+            EditItem = new CordListDto
+            {
+                Id = Item.Id,
+                JCPartNumber = Item.JCPartNumber,
+                SupplierName = Item.SupplierName,
+                LDPartNumber = Item.LDPartNumber,
+                LDPartName = Item.LDPartName,
+                RevisionNumber = Item.RevisionNumber,
+                PackageWeight = Item.PackageWeight,
+                Quantity = Item.Quantity
+            };
+        }
+    }
+
+    private void Cancel() => MudDialog?.Cancel();
+
+    private void Save()
+    {
+        if (string.IsNullOrWhiteSpace(EditItem.JCPartNumber))
+        {
+            SnackbarHelper.Show("请填写 JC Part Number", Severity.Warning);
+            return;
+        }
+        MudDialog?.Close(DialogResult.Ok(EditItem));
+    }
+}

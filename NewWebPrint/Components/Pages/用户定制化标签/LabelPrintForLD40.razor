@@ -1,0 +1,178 @@
+﻿@page "/LabelPrintForLD40"
+
+@rendermode InteractiveServer
+
+<MudPaper Square="true" Class="d-flex flex-column flex-grow-1 py-3 px-10 mud-background-gray"
+          Style="height: 100vh; overflow: auto;">
+
+    <MudStack Style="height: 100vh;">
+        <MudPaper Class="d-flex flex-column px-4 py-2">
+            <MudGrid Spacing="2">
+                <MudItem md="3">
+                    <MudTextField @bind-Value="WorkNo" Label="生产订单" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+                <MudItem md="1" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" FullWidth="true" Color="Color.Primary"
+                               OnClick="SearchOrderAsync" Disabled="@_isSearching">
+                        @(_isSearching ? "查询中…" : "查询")
+                    </MudButton>
+                </MudItem>
+                <MudItem md="4">
+                    <MudTextField @bind-Value="MaterialNo" Label="物料号" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+                <MudItem md="4">
+                    <MudTextField @bind-Value="Supplier" Label="供应商" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+            </MudGrid>
+
+            <MudGrid Spacing="2">
+                <MudItem md="4">
+                    <MudTextField @bind-Value="Barcode" Label="外套管条码"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                  Class="scan-input-field mud-width-full"
+                                  OnKeyUp="OnBarcodeKeyUp"></MudTextField>
+                </MudItem>
+                <MudItem md="2">
+                    <MudTextField @bind-Value="BindNumber" Label="绑定数" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+                <MudItem md="2">
+                    <MudTextField @bind-Value="BindSum" Label="总数" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+                <MudItem md="2">
+                    <MudTextField @bind-Value="BoxNum" Label="箱号" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+                <MudItem md="2">
+                    <MudTextField @bind-Value="Worker" Label="员工" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"></MudTextField>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="px-4 py-2">
+            <MudGrid Spacing="2">
+                <MudItem sm="6" md="5">
+                    <MudTextField Value="@BarcodeList"
+                                  ReadOnly="true"
+                                  Lines="5"
+                                  Label="条码列表"
+                                  Variant="Variant.Outlined"/>
+                </MudItem>
+
+                <MudItem sm="6" md="5">
+                    <MudTextField @bind-Value="BoxText"
+                                  Lines="5"
+                                  Label="侧唛文本"
+                                  Variant="Variant.Outlined"/>
+                </MudItem>
+                <MudItem sm="12" md="2" Class="d-flex align-center">
+                    <div class="ld40-print-actions">
+                        <MudSelect T="string"
+                                   Label="请选择打印机"
+                                   @bind-Value="SelectedPrinter"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Dense="true"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Print"
+                                   Class="ld40-print-select">
+                            @foreach (var p in Printers)
+                            {
+                                <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Class="ld40-print-btn"
+                                   OnClick="PrintSubmitAsync"
+                                   Disabled="@_isPrinting">
+                            @(_isPrinting ? "打印中…" : "绑定并打印")
+                        </MudButton>
+                    </div>
+                </MudItem>
+                @* <MudItem xs="12" Class="px-0"> *@
+                @*     <MudDivider DividerType="DividerType.FullWidth" Class="my-4"/> *@
+                @* </MudItem> *@
+                <MudItem sm="12">
+                    <MudGrid Spacing="2">
+                        <MudItem md="4">
+                            <MudTextField @bind-Value="Seach_BoxNo" Label="查询箱条码" Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"></MudTextField>
+                        </MudItem>
+                        <MudItem md="4">
+                            <MudTextField @bind-Value="Seach_Barcode" Label="外套管条码" Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"></MudTextField>
+                        </MudItem>
+                        <MudItem md="2" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Filled" FullWidth="true" Color="Color.Primary"
+                                       OnClick="SearchBindingAsync">查询</MudButton>
+                        </MudItem>
+                        <MudItem md="2" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Filled" FullWidth="true" Color="Color.Warning"
+                                       OnClick="ClearSearchAsync">清空</MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </MudItem>
+                <MudItem sm="12">
+                    <MudTextField @bind-Value="Search_value"
+                                  ReadOnly="true"
+                                  Lines="5"
+                                  Label="查询结果"
+                                  Variant="Variant.Outlined"/>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudGrid>
+            <MudItem xs="12" sm="12">
+                <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="200"/>
+            </MudItem>
+            @* *@
+            @* <MudItem xs="12" sm="6" Class="d-flex"> *@
+            @*     <MudPaper Class="pa-4 d-flex flex-column flex-grow-1"> *@
+            @*         <MudText>预留区域</MudText> *@
+            @*     </MudPaper> *@
+            @* </MudItem> *@
+        </MudGrid>
+    </MudStack>
+
+</MudPaper>
+
+<style>
+    .ld40-print-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .ld40-print-select,
+    .ld40-print-btn {
+        width: 100%;
+    }
+
+    /* sm：选择器与打印按钮水平排列；md 及以上：垂直排列（选择器在上） */
+    @@media (min-width: 600px) and (max-width: 959.95px) {
+        .ld40-print-actions {
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .ld40-print-select {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .ld40-print-btn {
+            flex: 0 0 auto;
+            width: auto;
+            min-width: 88px;
+        }
+    }
+</style>

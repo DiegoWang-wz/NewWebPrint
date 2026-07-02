@@ -1,0 +1,63 @@
+<MudSelect T="string"
+           Label="@Label"
+           @bind-Value="SelectedInternal"
+           Adornment="Adornment.Start"
+           AdornmentIcon="@Icons.Material.Filled.Print"
+           Variant="@EffectiveVariant"
+           Margin="@EffectiveMargin"
+           Dense="@EffectiveDense"
+           FullWidth="@EffectiveFullWidth"
+           Class="@EffectiveClass"
+           Style="@EffectiveStyle"
+           @attributes="AdditionalAttributes">
+    @foreach (var p in Printers ?? [])
+    {
+        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public IEnumerable<string> Printers { get; set; } = [];
+    [Parameter] public string? SelectedPrinter { get; set; }
+    [Parameter] public EventCallback<string?> SelectedPrinterChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "选择打印机";
+
+    /// <summary>未传时使用 Outlined。</summary>
+    [Parameter] public Variant? Variant { get; set; }
+
+    /// <summary>未传时使用 Dense。</summary>
+    [Parameter] public Margin? Margin { get; set; }
+
+    /// <summary>未传时为 false。</summary>
+    [Parameter] public bool? Dense { get; set; }
+
+    /// <summary>未传时为 false。</summary>
+    [Parameter] public bool? FullWidth { get; set; }
+
+    /// <summary>未传时使用默认宽度类。</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>未传时使用 min-width:220px。</summary>
+    [Parameter] public string? Style { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private Variant EffectiveVariant => Variant ?? MudBlazor.Variant.Outlined;
+    private Margin EffectiveMargin => Margin ?? MudBlazor.Margin.Dense;
+    private bool EffectiveDense => Dense ?? false;
+    private bool EffectiveFullWidth => FullWidth ?? false;
+    private string EffectiveClass => Class ?? "mud-width-full mud-width-sm-auto";
+    private string? EffectiveStyle => Style ?? "min-width:220px;";
+
+    private string? SelectedInternal
+    {
+        get => SelectedPrinter;
+        set
+        {
+            if (SelectedPrinter == value) return;
+            SelectedPrinter = value;
+            SelectedPrinterChanged.InvokeAsync(value);
+        }
+    }
+}

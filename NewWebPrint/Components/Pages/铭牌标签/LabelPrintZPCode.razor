@@ -1,0 +1,1255 @@
+﻿@page "/LabelPrintZPCode"
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+
+@using System.Data
+@using System.Drawing.Printing
+@using System.Globalization
+@using System.Text.Encodings.Web
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using System.Diagnostics
+@using MudBlazor
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Localization
+@using Newtonsoft.Json
+@using NewWebPrint.Models.Api
+@using NewWebPrint.Services.SapEwm
+@rendermode InteractiveServer
+
+@inject IJSRuntime JS
+@inject IStringLocalizer<Shared> T
+@inject ISapEwmService SapEwmService
+
+<MudPaper Class="px-4 py-2 ma-2 tab-background">
+    <MudGrid Spacing="2" AlignItems="AlignItems.Stretch">
+        <!-- 左侧：查询条件 -->
+        <MudItem xs="12" md="9" Class="d-flex align-center">
+            <div class="left-panel">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="12">
+                        <KeypadTarget Label='@($"{T["ProductionOrder"]}")'
+                                      @bind-Value="ProductionOrder"/>
+                    </MudItem>
+                    <MudItem xs="12" md="12">
+                        <KeypadTarget TValue="int" Label="请输入打印张数"
+                                      @bind-Value="PrintCount"/>
+                    </MudItem>
+                </MudGrid>
+            </div>
+        </MudItem>
+
+        <MudItem xs="12" md="3" Class="d-flex align-center justify-center">
+            <div class="right-panel">
+                <MudStack Row="true"
+                          Spacing="1"
+                          AlignItems="AlignItems.Stretch"
+                          Justify="Justify.SpaceBetween"
+                          Class="w-100 compact-stack">
+                    <MudButton Variant="Variant.Filled"
+                               Class="grow-btn auto-size"
+                               OnClick="@SearchSubmit"
+                               Disabled="@IsSearching">
+                        @(IsSearching ? @T["Searching"] : @T["Search"])
+                    </MudButton>
+                </MudStack> 
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="px-4 py-2 ma-2 tab-background" Elevation="3" Style="min-height:560px;">
+    @if (IsSearching)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Info"/>
+    }
+
+    <div class="table-scroll-x">
+        <MudTable Items="@ModelItems"
+                  T="ModelCode"
+                  Hover="true"
+                  FixedHeader="true"
+                  Height="120px"
+                  Breakpoint="Breakpoint.Sm"
+                  LoadingProgressColor="Color.Info"
+                  OnRowClick="OnRowClicked">
+
+            <HeaderContent>
+                <MudTh>车间</MudTh>
+                <MudTh>客户</MudTh>
+                <MudTh>客户编码</MudTh>
+                <MudTh>生产订单</MudTh>
+                <MudTh>销售订单</MudTh>
+                <MudTh>物料代码</MudTh>
+                <MudTh>物料名称</MudTh>
+                <MudTh>规格型号</MudTh>
+                <MudTh>订单数量</MudTh>
+            </HeaderContent>
+
+            <RowTemplate>
+                <MudTd DataLabel="@T["Factory"]">@context.SCLine</MudTd>
+                <MudTd DataLabel="@T["Workshop"]">@context.client</MudTd>
+                <MudTd DataLabel="@T["Order"]">@context.clientCode</MudTd>
+                <MudTd DataLabel="@T["OrderLine"]">@context.Production_order_no</MudTd>
+                <MudTd DataLabel="@T["OrderDelivery"]">@context.sales_order_no</MudTd>
+                <MudTd DataLabel="@T["MaterialCode"]">@context.pruduct_code</MudTd>
+                <MudTd DataLabel="@T["MaterialGroup"]">@context.product_name</MudTd>
+                <MudTd DataLabel="@T["MaterialName"]">@context.product_model</MudTd>
+                <MudTd DataLabel="@T["MaterialModel"]">@context.Production_order_sum</MudTd>
+            </RowTemplate>
+
+            <NoRecordsContent>
+                <MudText Class="pa-4" Typo="Typo.subtitle2" Align="Align.Center" Color="Color.Secondary">
+                    @T["NonData"]
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </div>
+
+    <MudGrid Spacing="1" Class="h-100 my-2" Style="height:100%; width:100%;">
+        <MudItem Class="d-flex" Style="flex:3; min-height:260px;">
+            <MudPaper Class="d-flex justify-center align-center pa-2"
+                      Style="width:100%; height:100%;">
+                <MudTextField Value="@(PrintMessages)"
+                              ReadOnly="true"
+                              Lines="18"
+                              Variant="Variant.Outlined"
+                              Placeholder="@T["InHereOutPutMsg"]"
+                              Class="font-monospace"
+                              Style="width:100%; height:100%;"/>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem Class="d-flex align-center justify-center" Style="flex:5;">
+            <MudPaper Class="pa-2" Style="width:100%; height:100%;">
+                <MudPaper Elevation="2" Class="pa-2 mb-2 print-card">
+                    <MudGrid GutterSize="1" AlignItems="AlignItems.Center">
+                        <MudItem xs="12" md="12">
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudSelect T="string"
+                                               Label="@T["SelectPrinter"]"
+                                               @bind-Value="SelectedPrinter"
+                                               Adornment="Adornment.Start"
+                                               AdornmentIcon="@Icons.Material.Filled.Print"
+                                               Variant="Variant.Outlined"
+                                               Class="print-select">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+
+                                    <MudDatePicker Label="yyyy-MM-dd" Editable="true" @bind-Date="_date"
+                                                   Mask="@(new DateMask("0000-00-00"))" DateFormat="yyyy-MM-dd"
+                                                   Placeholder="ISO Date" Variant="Variant.Outlined"/>
+
+                                    <MudSelect T="string"
+                                               Label="选择组别"
+                                               @bind-Value="Group"
+                                               Variant="Variant.Outlined"
+                                               Dense="true">
+                                        <MudSelectItem T="string" Value="@("A")">A</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("B")">B</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("C")">C</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("D")">D</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("E")">E</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("F")">F</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("G")">G</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("H")">H</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("I")">I</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("J")">J</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("K")">K</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("L")">L</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("M")">M</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("N")">N</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("O")">O</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("P")">P</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Q")">Q</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("R")">R</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("S")">S</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("T")">T</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("U")">U</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("V")">V</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("W")">W</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("X")">X</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Y")">Y</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Z")">Z</MudSelectItem>
+                                    </MudSelect>
+                                </MudStack>
+
+                                <MudStack Row="true"
+                                          Spacing="1"
+                                          AlignItems="AlignItems.Center"
+                                          Class="mt-1">
+                                    <MudText Typo="Typo.subtitle2" Class="mr-2">标签类型:</MudText>
+
+                                    <MudRadioGroup @bind-Value="LabelType" Class="size-radio-group">
+                                        <MudStack Row="true" Spacing="1">
+                                            <MudRadio Value="@("Barcode")" Color="Color.Primary">条形码</MudRadio>
+                                            <MudRadio Value="@("QrCode")" Color="Color.Primary">二维码</MudRadio>
+                                            <MudRadio Value="@("NewBarcode")" Color="Color.Primary">条形码新</MudRadio>
+                                            <MudRadio Value="@("ApplianceCode")" Color="Color.Primary">电器条码
+                                            </MudRadio>
+                                        </MudStack>
+                                    </MudRadioGroup>
+                                </MudStack>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <KeypadTarget TValue="int" Label="打印起始页" @bind-Value="txtContainer_start"/>
+                <KeypadTarget TValue="int" Label="打印结束页" @bind-Value="txtContainer_end"/>
+                <KeypadTarget TValue="int" Disabled="true" Label="每条记录打印份数" @bind-Value="txtIdenticalCopies"/>
+
+                <MudGrid GutterSize="2" AlignItems="AlignItems.End" Class="my-1">
+                    <MudItem xs="12" md="3" Class="d-flex">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   OnClick="@PrintSubmit"
+                                   Disabled="@IsPrinting"
+                                   FullWidth="true"
+                                   Size="Size.Medium"
+                                   Class="w-100 h-75 auto-size">
+                            @(IsPrinting ? @T["Printing"] : @T["Print"])
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+
+        <!-- 右侧数字键盘 -->
+        <MudItem Class="d-flex justify-center align-center" Style="flex:2; min-height:260px;">
+            <MudPaper Class="d-flex justify-center align-center pa-2"
+                      Style="width:100%; height:100%;">
+                <MudStack Class="d-flex justify-center align-center">
+                    <NumKeyboard KeyboardWidthPx="350" KeyboardHeightPx="350" KeySpacingPx="15"/>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ✅ 任务创建进度 MessageBox（遮罩弹窗） + ✅ 计时 + ✅ 原因显示 *@
+@if (ShowJobProgressBox)
+{
+    <MudOverlay Visible="true" DarkBackground="true" AutoClose="false" Class="progress-overlay">
+        <MudPaper Elevation="8" Class="pa-4 progress-box">
+            <MudText Typo="Typo.h6">@JobProgressTitle</MudText>
+
+            <MudText Typo="Typo.body2" Class="mt-2">@JobProgressText</MudText>
+
+            <MudProgressLinear Class="mt-3"
+                               Value="@JobProgressPercent"
+                               BufferValue="100"
+                               Rounded="true"/>
+            <MudDivider Class="my-3"/>
+
+            <MudGrid Spacing="1">
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption">已用时：<b>@JobElapsedText</b></MudText>
+                </MudItem>
+
+                @if (!string.IsNullOrWhiteSpace(JobLastReason))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">原因：@JobLastReason</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+    </MudOverlay>
+}
+
+@code
+{
+    private EWMLabelModel? printModel = null;
+    private int activeTabIndex = 0;
+    public Storage hskCodeStorage = new Storage("server=192.168.21.240;user id=sa;password=Jc..2015;database=HskCode;persistsecurityinfo=True;Encrypt=True;TrustServerCertificate=True;");
+    DateTime? _date = DateTime.Today;
+
+    string? SelectedPrinter { get; set; }
+    string? DefaultPrinter { get; set; }
+    List<string> Printers { get; set; } = new();
+
+    bool IsPrinting { get; set; }
+    bool IsSearching { get; set; }
+
+    string ProductionOrder { get; set; } = "100296123";
+
+    // =========================
+    // ✅ 结束页实时计算：end = start + PrintCount - 1
+    // =========================
+    private int _printCount = 0;
+
+    int PrintCount
+    {
+        get => _printCount;
+        set
+        {
+            if (_printCount == value) return;
+            _printCount = value;
+            UpdateContainerEnd();
+        }
+    }
+
+    private int _txtContainer_start = 0;
+
+    int txtContainer_start
+    {
+        get => _txtContainer_start;
+        set
+        {
+            if (_txtContainer_start == value) return;
+            _txtContainer_start = value;
+            UpdateContainerEnd();
+        }
+    }
+
+    private int _txtContainer_end = 0;
+
+    int txtContainer_end
+    {
+        get => _txtContainer_end;
+        set { _txtContainer_end = CalcContainerEnd(_txtContainer_start, _printCount); }
+    }
+
+    private int CalcContainerEnd(int start, int count)
+    {
+        if (start <= 0) return 0;
+        if (count <= 0) return start;
+        return start + count - 1;
+    }
+
+    private void UpdateContainerEnd()
+    {
+        _txtContainer_end = CalcContainerEnd(_txtContainer_start, _printCount);
+    }
+
+    // =========================
+    // ✅ 进度弹窗 + ✅ 计时（无超时阈值）
+    // =========================
+    private bool ShowJobProgressBox { get; set; } = false;
+    private string JobProgressTitle { get; set; } = "正在创建打印任务…";
+    private string JobProgressText { get; set; } = "";
+    private double JobProgressPercent { get; set; } = 0;
+
+    private Stopwatch? _jobStopwatch;
+    private string JobElapsedText { get; set; } = "00:00";
+
+    private string JobLastReason { get; set; } = "";
+
+    private CancellationTokenSource? _jobProgressCts;
+    private Task? _jobProgressTask;
+
+    private CancellationTokenSource? _jobTimerCts;
+    private Task? _jobTimerTask;
+
+    private void StartJobProgress(string printer, int total)
+    {
+        StopJobProgressAll();
+
+        ShowJobProgressBox = true;
+        JobProgressTitle = "正在创建打印任务…";
+        JobProgressPercent = 0;
+        JobLastReason = "";
+
+        _jobStopwatch = Stopwatch.StartNew();
+        JobElapsedText = "00:00";
+
+        JobProgressText = $"打印机：{printer}，数量：{total}（正在生成打印任务/Spool 数据…）";
+
+        _jobProgressCts = new CancellationTokenSource();
+        _jobProgressTask = RunEstimatedProgressAsync(total, _jobProgressCts.Token);
+
+        _jobTimerCts = new CancellationTokenSource();
+        _jobTimerTask = RunTimerUiAsync(_jobTimerCts.Token);
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void StopJobProgressAll()
+    {
+        try
+        {
+            _jobProgressCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            _jobTimerCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        _jobProgressCts = null;
+        _jobTimerCts = null;
+
+        _jobProgressTask = null;
+        _jobTimerTask = null;
+    }
+
+    private string FormatElapsed(TimeSpan ts)
+    {
+        int totalMinutes = (int)ts.TotalMinutes;
+        return $"{totalMinutes:00}:{ts.Seconds:00}";
+    }
+
+    private async Task FinishJobProgressAsync(bool success, string finalMessage, string? reason = null)
+    {
+        StopJobProgressAll();
+
+        var elapsed = _jobStopwatch?.Elapsed ?? TimeSpan.Zero;
+        JobElapsedText = FormatElapsed(elapsed);
+
+        JobProgressPercent = 100;
+        JobProgressTitle = success ? "任务创建完成 ✅" : "任务创建失败 ❌";
+        JobLastReason = reason ?? "";
+
+        JobProgressText = $"{finalMessage}（耗时：{JobElapsedText}）";
+
+        await InvokeAsync(StateHasChanged);
+
+        await Task.Delay(1200);
+
+        ShowJobProgressBox = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RunTimerUiAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var elapsed = _jobStopwatch?.Elapsed ?? TimeSpan.Zero;
+            JobElapsedText = FormatElapsed(elapsed);
+
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                await Task.Delay(200, ct);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private async Task RunEstimatedProgressAsync(int total, CancellationToken ct)
+    {
+        int targetMs = Math.Clamp(total * 25, 900, 20000);
+        var sw = Stopwatch.StartNew();
+
+        while (!ct.IsCancellationRequested)
+        {
+            double ratio = sw.Elapsed.TotalMilliseconds / targetMs;
+            double p = Math.Min(0.90, Math.Max(0.0, ratio)) * 100.0;
+
+            JobProgressPercent = p;
+
+            int done = total <= 0 ? 0 : (int)Math.Round((p / 100.0) * total);
+            if (done > total) done = total;
+
+            JobProgressText = $"正在创建任务：{done}/{total}（请勿关闭页面）";
+
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                await Task.Delay(120, ct);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    // =========================
+    // 其它原有字段
+    // =========================
+    string SumNum { get; set; } = "";
+    string Group { get; set; } = "A";
+    string PaperSize { get; set; } = "30*12";
+    string LabelType { get; set; } = "Barcode";
+
+    string PrintMessages { get; set; } = string.Empty;
+
+    int txtIdenticalCopies { get; set; } = 1;
+    int txtContainer_start_copy { get; set; }
+
+    private ModelCode? _model;
+    private IEnumerable<ModelCode> ModelItems => _model is null ? Array.Empty<ModelCode>() : new[] { _model };
+
+    public BLLJCZPCode cbll = new BLLJCZPCode();
+    public ZPJCZP newcbll = new ZPJCZP();
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "LabelPrintZPCode_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    (bool ok, float w, float h) TryParsePaper(string paper)
+    {
+        try
+        {
+            var parts = (paper ?? "").Split(new char[] { '*', 'x', 'X' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length != 2) return (false, 0, 0);
+            return (true, float.Parse(parts[0]), float.Parse(parts[1]));
+        }
+        catch
+        {
+            return (false, 0, 0);
+        }
+    }
+
+    async Task SearchSubmit()
+    {
+        if (IsSearching) return;
+
+        if (string.IsNullOrWhiteSpace(ProductionOrder))
+        {
+            SnackbarHelper.Show("请输入生产单号", Severity.Warning);
+            return;
+        }
+
+        IsSearching = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            string langParam = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh" ? "1" : "E";
+            var response = await SapEwmService.InvokeDynamicAsync(
+                "GetProductInfo",
+                new Dictionary<string, string?> { ["po"] = ProductionOrder.Trim(), ["lang"] = langParam },
+                logToBrowserConsole: true);
+
+            if (response.Code != ApiResultCode.Success || response.Data is null)
+            {
+                SnackbarHelper.Show(response.Message, Severity.Error);
+                return;
+            }
+
+            var raw = response.Data.RawJson;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                SnackbarHelper.Show("未返回业务 JSON", Severity.Error);
+                return;
+            }
+
+            printModel = JsonConvert.DeserializeObject<EWMLabelModel>(raw);
+            if (printModel is null)
+            {
+                SnackbarHelper.Show("订单数据解析失败", Severity.Error);
+                return;
+            }
+
+            _model = ConvertModel(printModel);
+
+            if (LabelType == "NewBarcode")
+            {
+                txtContainer_start = GetPrintHistoryEndNumNew(ProductionOrder);
+                txtContainer_start_copy = GetPrintHistoryEndNumNew(ProductionOrder);
+            }
+            else
+            {
+                txtContainer_start = GetPrintHistoryEndNum(ProductionOrder);
+                txtContainer_start_copy = GetPrintHistoryEndNum(ProductionOrder);
+            }
+
+            SnackbarHelper.Show("查询成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private int GetPrintHistoryEndNum(string productionNo)
+    {
+        DataTable dtb = cbll.GetPrintNumHistory("HskCode_print_history_ProductionNo='" + productionNo + "'");
+        if (dtb == null || dtb.Rows.Count <= 0)
+        {
+            return 1;
+        }
+        else
+        {
+            string str = dtb.Rows[0]["HskCode_print_history_Printed"].ToString();
+            int count = Convert.ToInt32(str);
+            return count + 1;
+        }
+    }
+
+    private int GetPrintHistoryEndNumNew(string productionNo)
+    {
+        string selectedDate = _date!.Value.ToString("yyyy-MM-dd");
+        int end = newcbll.getEnd(selectedDate);
+        return end + 1;
+    }
+
+    ModelCode? ConvertModel(EWMLabelModel? sapmodel)
+    {
+        if (sapmodel == null) return null;
+
+        var model = new ModelCode();
+        model.Production_order_no = CodeTool.ClearFrontZreo(sapmodel.orderNo);
+        model.sales_order_no = CodeTool.ClearFrontZreo(sapmodel.SalesOrderNo);
+        model.pruduct_code = CodeTool.ClearFrontZreo(sapmodel.materialCode);
+        model.product_name = sapmodel.materialName;
+        model.product_model = sapmodel.materialModel_zh;
+        model.Production_order_sum = sapmodel.orderQuantity;
+        model.client = sapmodel.client;
+        model.clientCode = sapmodel.clientno;
+        model.SCLine = sapmodel.supplier;
+        model.HaveJiecangLOGO = sapmodel.jclogoText;
+        model.ClientMarialMark = sapmodel.goodsmark;
+        return model;
+    }
+
+    void OnRowClicked(TableRowClickEventArgs<ModelCode> args)
+    {
+        if (args.Item == null) return;
+        SumNum = args.Item.Production_order_sum?.ToString() ?? string.Empty;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task PrintSubmit()
+    {
+        int suc = 0;
+        if (IsPrinting) return;
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+        
+        var (ok, w, h) = TryParsePaper(PaperSize);
+        if (!ok || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误（如 100*80）", Severity.Error);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        if (printModel is null)
+        {
+            SnackbarHelper.Show("暂无可打印的数据，请先查询。", Severity.Warning);
+            return;
+        }
+
+        ModelMaterialMark markmodel = new ModelMaterialMark();
+        markmodel.JCM_ProductName = _model.product_name;
+        markmodel.JCM_ProductCode = _model.pruduct_code;
+        markmodel.JCM_ProductNum = _model.Production_order_sum;
+        markmodel.JCM_OperationPerson = "操作人";
+        markmodel.JCM_PrintTime = DateTime.Now.ToString();
+
+        markmodel.productCode = "";
+        markmodel.companyCode = "";
+
+        if (string.IsNullOrEmpty(_model.sales_order_no))
+        {
+            _model.sales_order_no = "88888888";
+        }
+
+        markmodel.JCM_WorkNo = _model.Production_order_no;
+        markmodel.JCM_SalesNo = _model.sales_order_no;
+
+        string productNo7 = _model.Production_order_no.Substring(7, 1);
+        string productNo8 = _model.Production_order_no.Substring(8, 1);
+        string product2 = productNo7 + productNo8;
+
+        List<PrintBlock> list = new List<PrintBlock>();
+        float borderThickness = 0.2f;
+        
+
+        if (LabelType == "Barcode")
+        {
+            list = Barcode();
+            for (int i = txtContainer_start; i <= txtContainer_end; i++)
+            {
+                string code = string.Format("{0}{1}{2}{3}",
+                    _model.sales_order_no, Group,
+                    _model.Production_order_no.Substring(_model.Production_order_no.Length - 3, 3),
+                    i.ToString("0000"));
+
+                markmodel.JCM_CodeValue = code;
+                suc += cbll.AddCode(markmodel);
+            }
+        }
+        else if (LabelType == "QrCode")
+        {
+            list = QrCode();
+
+            if (_model.sales_order_no == "" || _model.sales_order_no == "0")
+            {
+                _model.sales_order_no = _model.Production_order_no.Substring(1, 8);
+            }
+
+            for (int i = txtContainer_start; i <= txtContainer_end; i++)
+            {
+                string series = i.ToString("00000");
+                string CodeValue = _model.sales_order_no + "-" + _model.Production_order_no + "-" + series;
+                markmodel.JCM_CodeValue = CodeValue;
+                suc += cbll.AddCode(markmodel);
+
+                string[] column = new string[] { "Codevalue", "Production_order_no", "sales_order_no", "pruduct_code", "product_name", "product_model", "Production_order_sum", "Production_order_6no", "SCLine", "SCLineCode", "syn_flag" };
+                string[] value = new string[] { CodeValue, _model.Production_order_no, _model.sales_order_no, _model.pruduct_code, _model.product_name, _model.product_model, _model.Production_order_sum, _model.Production_order_no, "", "", "2" };
+                int sucNum = hskCodeStorage.AddRecord("main", column, value);
+                hskCodeStorage.AddRecord("main_history", column, value);
+            }
+        }
+        else if (LabelType == "NewBarcode")
+        {
+            list = NewBarcode();
+            DateTime dateSCRQ = _date.Value;
+            string twoDigitYear = dateSCRQ.ToString("yy");
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            int weekNumber = culture.Calendar.GetWeekOfYear(dateSCRQ, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+            string formattedWeekNumber = weekNumber.ToString("D2");
+            DayOfWeek dayOfWeek = dateSCRQ.DayOfWeek;
+            int dayNumber = (int)dayOfWeek;
+            string result = $"{twoDigitYear}{formattedWeekNumber}{dayNumber}";
+
+            for (int i = txtContainer_start; i <= txtContainer_end; i++)
+            {
+                string series = i.ToString("00000");
+                string CodeValue = "18121" + result + series + "2";
+                markmodel.JCM_CodeValue = CodeValue;
+                suc += cbll.AddCode(markmodel);
+            }
+        }
+        else if (LabelType == "ApplianceCode")
+        {
+            list = ApplianceCode();
+            for (int i = txtContainer_start; i <= txtContainer_end; i++)
+            {
+                string code = string.Format("{0}{1}", _model.Production_order_no, i.ToString("0000"));
+                markmodel.JCM_CodeValue = code;
+                suc += cbll.AddCode(markmodel);
+            }
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = txtContainer_start,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = borderThickness,
+            Blocks = list,
+            IsRotate = false,
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter} | {w}×{h}mm | 数量={PrintCount} | 订单={ProductionOrder ?? "-"}");
+
+        // ✅ 开始显示弹窗：只计时，不设置任何超时阈值
+        StartJobProgress(SelectedPrinter ?? "-", PrintCount);
+
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = null,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(layout, options);
+            Console.WriteLine("===== Layout JSON (PrintSubmit) =====");
+            Console.WriteLine(json);
+            Console.WriteLine("===== End Layout JSON =====");
+
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintZPCode_printer");
+
+            AppendLog($"打印提交成功（任务创建完成），耗时={JobElapsedText}");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+
+            await FinishJobProgressAsync(
+                success: true,
+                finalMessage: $"任务创建完成：打印机={SelectedPrinter}，数量={PrintCount}",
+                reason: "JS 返回正常（LocalAgent 已返回）"
+            );
+            try
+            {
+                if (suc > 0)
+                {
+                    if (LabelType == "NewBarcode")
+                    {
+                        newcbll.updateEnd((txtContainer_start + suc - 1).ToString(), _date.Value.ToString("yyyy-MM-dd"));
+                    }
+                    else
+                    {
+                        cbll.AddCodeEnd(ProductionOrder, (txtContainer_start + suc - 1).ToString());
+                    }
+
+                    txtContainer_start = txtContainer_start + suc;
+                    txtContainer_start_copy = txtContainer_start;
+                }
+            }
+            catch (Exception ex)
+            {
+                string dd = ex.Message;
+            }
+        }
+        catch (OperationCanceledException ex)
+        {
+            string reason = $"OperationCanceledException：{ex.Message}";
+            JobLastReason = reason;
+
+            AppendLog($"任务创建被取消：{reason} | 已用时={JobElapsedText}");
+            SnackbarHelper.Show($"任务创建被取消：{ex.Message}", Severity.Warning);
+
+            await FinishJobProgressAsync(false, $"任务创建被取消", reason);
+        }
+
+        catch (JSException ex)
+        {
+            string reason = $"JSException：{ex.Message}";
+            JobLastReason = reason;
+
+            AppendLog($"JSException：{ex.Message} | 已用时={JobElapsedText}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+
+            await FinishJobProgressAsync(false, $"任务创建失败：{ex.Message}", reason);
+        }
+        catch (Exception ex)
+        {
+            string reason = $"{ex.GetType().Name}：{ex.Message}";
+            JobLastReason = reason;
+
+            AppendLog($"异常：{ex.Message} | 已用时={JobElapsedText}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+
+            await FinishJobProgressAsync(false, $"任务创建失败：{ex.Message}", reason);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    List<PrintBlock> Barcode()
+    {
+        string code = string.Format("{0}{1}{2}", _model.sales_order_no, Group, _model.Production_order_no.Substring(_model.Production_order_no.Length - 3, 3));
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 1,
+                Y = 0.5f,
+                Width = 28,
+                Height = 2,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = ProductionOrder,
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "条形码",
+                X = 1,
+                Y = 2.5f,
+                Width = 27,
+                Height = 6,
+                ShowBorder = false,
+                Barcode = new BarcodeElement
+                {
+                    Value = code + "{index:4}",
+                    SafeMarginMm = 0.1f
+                }
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 1,
+                Y = 8.5f,
+                Width = 28,
+                Height = 2,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = code + "{index:4}",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+
+        return list;
+    }
+
+    List<PrintBlock> QrCode()
+    {
+        string CodeValue = _model.sales_order_no + "-" + _model.Production_order_no;
+        string product_name1 = _model.product_name;
+        string product_name2 = "";
+        if (_model.product_name.Length > 14)
+        {
+            product_name1 = _model.product_name.Substring(0, 14);
+            product_name2 = _model.product_name.Substring(14, _model.product_name.Length - 14);
+        }
+
+        if (product_name2.Length > 17)
+        {
+            product_name2 = product_name2.Substring(0, 17);
+        }
+
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 0.7f,
+                Y = 1.5f,
+                Width = 20f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "Type: " + product_name1,
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 0.7f,
+                Y = 4f,
+                Width = 20f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = product_name2,
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 0.7f,
+                Y = 6.5f,
+                Width = 20f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "OC: " + _model.sales_order_no,
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 4",
+                X = 0.7f,
+                Y = 9f,
+                Width = 20f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "MD: " + DateTime.Now.ToString("yyyyMMdd") + " - {index:5}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 5",
+                X = 19.5f,
+                Y = 0.5f,
+                Width = 9f,
+                Height = 11f,
+                ShowBorder = false,
+                Qr = new QrElement()
+                {
+                    Value = CodeValue + "-{index:5}",
+                    SafeMarginMm = 0.2f
+                }
+            }
+        };
+
+        return list;
+    }
+
+    List<PrintBlock> NewBarcode()
+    {
+        DateTime dateSCRQ = _date.Value;
+        string twoDigitYear = dateSCRQ.ToString("yy");
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        int weekNumber = culture.Calendar.GetWeekOfYear(dateSCRQ, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        string formattedWeekNumber = weekNumber.ToString("D2");
+        DayOfWeek dayOfWeek = dateSCRQ.DayOfWeek;
+        int dayNumber = (int)dayOfWeek;
+        string result = $"{twoDigitYear}{formattedWeekNumber}{dayNumber}";
+        string CodeValue = "18121" + result;
+
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 1f,
+                Y = 1.5f,
+                Width = 27.5f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = ProductionOrder,
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "条形码",
+                X = 3f,
+                Y = 4f,
+                Width = 24f,
+                Height = 5.5f,
+                ShowBorder = false,
+                Barcode = new BarcodeElement
+                {
+                    Value = CodeValue + "{index:5}2",
+                    SafeMarginMm = 0.1f
+                }
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 1f,
+                Y = 10f,
+                Width = 27.5f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = CodeValue + "{index:5}2",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+
+        return list;
+    }
+
+    List<PrintBlock> ApplianceCode()
+    {
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 1f,
+                Y = 1.5f,
+                Width = 27.5f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = ProductionOrder,
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "条形码",
+                X = 3f,
+                Y = 4f,
+                Width = 24f,
+                Height = 5.5f,
+                ShowBorder = false,
+                Barcode = new BarcodeElement
+                {
+                    Value = _model.Production_order_no + "{index:4}",
+                    SafeMarginMm = 0.1f
+                }
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 1f,
+                Y = 10f,
+                Width = 27.5f,
+                Height = 2f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = _model.Production_order_no + "{index:4}",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+
+        return list;
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .left-panel,
+    .right-panel {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .grow-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        width: 100%;
+        height: clamp(48px, 14vh, 120px);
+    }
+
+    .auto-size {
+        font-size: clamp(14px, 1.8vw, 20px);
+    }
+
+    .compact-stack .mud-button-root {
+        margin-inline: 2px;
+    }
+
+    .table-scroll-x {
+        overflow-x: auto;
+    }
+
+    .table-scroll-x .mud-table {
+        width: max-content;
+        min-width: 100%;
+    }
+
+    .table-scroll-x .mud-table thead th {
+        white-space: nowrap;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        font-weight: 600;
+    }
+
+    .table-scroll-x .mud-table tbody td {
+        white-space: normal;
+        word-break: break-all;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .table-scroll-x .mud-table {
+        font-size: 0.95rem;
+    }
+
+    .compact-card {
+        border-radius: 6px;
+    }
+
+    .print-card {
+        padding: 8px 10px;
+    }
+
+    .print-select {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .size-radio-group .mud-radio-root {
+        margin-right: 6px;
+    }
+
+    .progress-overlay {
+        z-index: 9999;
+    }
+
+    .progress-box {
+        width: min(520px, calc(100vw - 40px));
+        border-radius: 10px;
+    }
+</style>

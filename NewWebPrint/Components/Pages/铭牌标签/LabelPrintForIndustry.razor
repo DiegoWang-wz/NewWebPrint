@@ -1,0 +1,4850 @@
+﻿@page "/LabelPrintForIndustry"
+@inject SnackbarHelper SnackbarHelper
+@using System.Globalization
+@using NewWebPrint.Utilities
+@using Microsoft.Data.SqlClient
+
+@rendermode InteractiveServer
+@inject LocalStorageHelper LocalStorage
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject IHttpClientFactory HttpClientFactory
+
+<MudGrid Class="pa-4 py-3 side-mark-page industry-label-page"
+         GutterSize="2"
+         Justify="Justify.Center"
+         AlignItems="AlignItems.Start">
+    <MudItem xs="12" xl="12">
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-0 pt-2"
+                 Class="industry-nameplate-tabs mb-2" @bind-ActivePanelIndex="IndustryMainTab">
+            <MudTabPanel Text="通用铭牌">
+        <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+            <MudItem xs="12" md="6" Class="d-flex">
+                <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                    <MudGrid Spacing="1">
+                        <MudItem xs="12" sm="6">
+                            <MudTextField T="string" Label="生产订单号" @bind-Value="ProductionOrder"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @ref="_generalInternalBarcodeField"
+                                          @bind-Value="ContentBarcode"
+                                          @key="_generalInternalBarcodeFieldKey"
+                                          Label="内部条码"
+                                          Margin="Margin.Dense"
+                                          Variant="Variant.Outlined"
+                                          Class="barcode-entry-field"
+                                          Immediate="true"
+                                          Placeholder="扫码录入，回车直接打印"
+                                          OnKeyUp="OnGeneralInternalBarcodeKeyUp"/>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <div class="result-list-grid industry-plate-grid">
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Type</span>
+                                    <MudTextField T="string" Value="@PlateType" ValueChanged="@OnPlateTypeChanged"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                  Class="plate-inline-input"/>
+                                </div>
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Item No</span>
+                                    <MudTextField T="string" Value="@PlateItemNo" ValueChanged="@OnPlateItemNoChanged"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                  Class="plate-inline-input"/>
+                                </div>
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Power Rate</span>
+                                    <MudTextField T="string" Value="@PlatePowerRate" ValueChanged="@OnPlatePowerRateChanged"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                  Class="plate-inline-input"/>
+                                </div>
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Rated.Load</span>
+                                    <MudTextField T="string" Value="@PlateRatedLoad" ValueChanged="@OnPlateRatedLoadChanged"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                  Class="plate-inline-input"/>
+                                </div>
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Duty Cycle</span>
+                                    <MudTextField T="string" Value="@PlateDutyCycle" ValueChanged="@OnPlateDutyCycleChanged"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                  Class="plate-inline-input"/>
+                                </div>
+                                <div class="result-list-item industry-plate-field">
+                                    <span class="result-list-label">Serial No</span>
+                                    <MudTextField T="string" Value="@DisplayDash(ResolvedSerialNo)" ReadOnly="true"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                                  FullWidth="true" TabIndex="-1"
+                                                  Class="plate-inline-input plate-serial-readonly font-monospace"/>
+                                </div>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6" Class="d-flex">
+                <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                    <MudGrid Spacing="1">
+                        <MudItem xs="12">
+                            <MudRadioGroup Value="SelectedLabelKind" ValueChanged="@OnLabelKindChanged" T="int">
+                                <div class="label-kind-radio-grid">
+                                    <MudRadio Value="@(0)" Color="Color.Primary">条形码标签55*40</MudRadio>
+                                    <MudRadio Value="@(1)" Color="Color.Primary">二维码标签55*40</MudRadio>
+                                    <MudRadio Value="@(2)" Color="Color.Primary">条形码标签40*25</MudRadio>
+                                    <MudRadio Value="@(3)" Color="Color.Primary">二维码标签40*25</MudRadio>
+                                </div>
+                            </MudRadioGroup>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
+                                       Margin="Margin.Dense" Variant="Variant.Outlined">
+                                @foreach (var p in Printers)
+                                {
+                                    <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudNumericField @bind-Value="PrintCount" Label="打印份数"
+                                             Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                           Variant="Variant.Outlined"/>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="PrintSubmit"
+                                       Disabled="@IsPrinting" FullWidth="true" Class="action-btn">
+                                @(IsPrinting ? "打印中…" : "直接打印")
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="W*A-LW铭牌">
+                <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@LwName" ValueChanged="@OnLwNameChanged"
+                                                  Label="名称" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@LwDrawing" ValueChanged="@OnLwDrawingChanged"
+                                                  Label="图号" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@LwSupplierCode" ValueChanged="@OnLwSupplierCodeChanged"
+                                                  Label="供应商代码" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@LwSupplierProduct" ValueChanged="@OnLwSupplierProductChanged"
+                                                  Label="供应商产品代码" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@LwCustomerPrefix" ValueChanged="@OnLwCustomerPrefixChanged"
+                                                  Label="客户前缀" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@LwMonthMm" ReadOnly="true"
+                                                  Label="月份(MM)" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@LwBatch" ValueChanged="@OnLwBatchChanged"
+                                                  Label="批次(当月)" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@LwTail4Display" ReadOnly="true"
+                                                  Label="条码尾号" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  Class="plate-serial-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField T="string"
+                                                  @ref="_waLwInternalBarcodeField"
+                                                  @key="_waLwInternalBarcodeFieldKey"
+                                                  Value="@LwInternalBarcode" ValueChanged="@OnLwInternalBarcodeChanged"
+                                                  Label="内部条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫码录入，回车直接打印"
+                                                  OnKeyUp="OnWaLwInternalBarcodeKeyUp"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="5">
+                                    <MudTextField T="string" Value="@LwCompositeDisplay()" ReadOnly="true" Disabled="true"
+                                                  Label="客户标识" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  TabIndex="-1"
+                                                  Class="lw-composite-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="3" Class="d-flex align-center" Style="min-height: 48px;">
+                                    <MudCheckBox T="bool" Dense="true"
+                                                 Value="LwShowCertificationIcons"
+                                                 ValueChanged="OnLwShowCertIconsChanged"
+                                                 Label="打印图标"/>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12">
+                                    <MudTextField T="string" Value="@WaLwOuterBoxBarcode" ValueChanged="@OnWaLwOuterBoxBarcodeChanged"
+                                                  Label="外箱条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="font-monospace barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫描或输入外箱条码"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" Value="WaLwFullBoxCount" ValueChanged="OnWaLwFullBoxCountChanged"
+                                                     Label="满箱数" Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@WaLwScannedCountDisplay" ReadOnly="true"
+                                                  Label="当前已扫入" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  Class="plate-serial-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudRadioGroup Value="SelectedLwVariant" ValueChanged="@OnLwVariantChanged" T="int">
+                                        <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                                            <MudRadio Value="@(0)" Color="Color.Primary">W1A-LW</MudRadio>
+                                            <MudRadio Value="@(1)" Color="Color.Primary">W8A-LW</MudRadio>
+                                        </MudStack>
+                                    </MudRadioGroup>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
+                                               Margin="Margin.Dense" Variant="Variant.Outlined">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="PrintCount" Label="打印份数"
+                                                     Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                                   Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="BindWaLwOuterBoxManualAsync"
+                                               Disabled="@(!CanBindWaLwOuterBox)"
+                                               FullWidth="true" Class="action-btn">
+                                        @(IsBindingWaLw ? "绑定中…" : "保存绑定")
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <MudPaper Outlined="true" Class="pa-3 fa17-bottom-panel">
+                            <MudText Typo="Typo.subtitle2" Class="mb-1 fa17-bottom-panel-title">已扫内部条码</MudText>
+                            <div class="scan-table-wrap fa17-bottom-panel-body">
+                                <MudTable Items="@WaLwScanRows" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+                                    <HeaderContent>
+                                        <MudTh Style="width: 80px;">序号</MudTh>
+                                        <MudTh>内部条码</MudTh>
+                                        <MudTh Style="min-width: 140px;">扫入时间</MudTh>
+                                        <MudTh Style="width: 90px;">操作</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Index</MudTd>
+                                        <MudTd Class="font-monospace">@context.InternalBarcode</MudTd>
+                                        <MudTd Class="text-no-wrap">@context.ScannedAt.ToString("HH:mm:ss")</MudTd>
+                                        <MudTd>
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => RemoveWaLwScannedLine(context.Index - 1))">
+                                                删除
+                                            </MudButton>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260" Class="fa17-bottom-panel w-100"/>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="FA42A铭牌">
+                <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42Name" ValueChanged="@OnFa42NameChanged"
+                                                  Label="名称" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42Drawing" ValueChanged="@OnFa42DrawingChanged"
+                                                  Label="图号" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42SupplierCode" ValueChanged="@OnFa42SupplierCodeChanged"
+                                                  Label="供应商代码" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42SupplierProduct" ValueChanged="@OnFa42SupplierProductChanged"
+                                                  Label="供应商产品代码" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@Fa42CustomerPrefix" ValueChanged="@OnFa42CustomerPrefixChanged"
+                                                  Label="客户前缀" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@Fa42MonthMm" ReadOnly="true"
+                                                  Label="月份(MM)" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@Fa42Batch" ValueChanged="@OnFa42BatchChanged"
+                                                  Label="批次(当月)" Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudTextField T="string" Value="@Fa42Tail4Display" ReadOnly="true"
+                                                  Label="条码尾号" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  Class="plate-serial-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string"
+                                                  @ref="_fa42InternalBarcodeField"
+                                                  @key="_fa42InternalBarcodeFieldKey"
+                                                  Value="@Fa42InternalBarcode" ValueChanged="@OnFa42InternalBarcodeChanged"
+                                                  Label="内部条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫码录入，回车直接打印"
+                                                  OnKeyUp="OnFa42InternalBarcodeKeyUp"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42CompositeDisplay()" ReadOnly="true" Disabled="true"
+                                                  Label="客户标识" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  TabIndex="-1"
+                                                  Class="lw-composite-readonly font-monospace"/>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12">
+                                    <MudTextField T="string" Value="@Fa42OuterBoxBarcode" ValueChanged="@OnFa42OuterBoxBarcodeChanged"
+                                                  Label="外箱条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="font-monospace barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫描或输入外箱条码"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" Value="Fa42FullBoxCount" ValueChanged="OnFa42FullBoxCountChanged"
+                                                     Label="满箱数" Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa42ScannedCountDisplay" ReadOnly="true"
+                                                  Label="当前已扫入" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  Class="plate-serial-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudRadioGroup Value="SelectedFa42Variant" ValueChanged="@OnFa42VariantChanged" T="int">
+                                        <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                                            <MudRadio Value="@(0)" Color="Color.Primary">FA42A-V</MudRadio>
+                                            <MudRadio Value="@(1)" Color="Color.Primary">FA42A-H</MudRadio>
+                                        </MudStack>
+                                    </MudRadioGroup>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
+                                               Margin="Margin.Dense" Variant="Variant.Outlined">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="PrintCount" Label="打印份数"
+                                                     Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                                   Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="BindFa42OuterBoxManualAsync"
+                                               Disabled="@(!CanBindFa42OuterBox)"
+                                               FullWidth="true" Class="action-btn">
+                                        @(IsBindingFa42 ? "绑定中…" : "保存绑定")
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <MudPaper Outlined="true" Class="pa-3 fa17-bottom-panel">
+                            <MudText Typo="Typo.subtitle2" Class="mb-1 fa17-bottom-panel-title">已扫内部条码</MudText>
+                            <div class="scan-table-wrap fa17-bottom-panel-body">
+                                <MudTable Items="@Fa42ScanRows" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+                                    <HeaderContent>
+                                        <MudTh Style="width: 80px;">序号</MudTh>
+                                        <MudTh>内部条码</MudTh>
+                                        <MudTh Style="min-width: 140px;">扫入时间</MudTh>
+                                        <MudTh Style="width: 90px;">操作</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Index</MudTd>
+                                        <MudTd Class="font-monospace">@context.InternalBarcode</MudTd>
+                                        <MudTd Class="text-no-wrap">@context.ScannedAt.ToString("HH:mm:ss")</MudTd>
+                                        <MudTd>
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => RemoveFa42ScannedLine(context.Index - 1))">
+                                                删除
+                                            </MudButton>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260" Class="fa17-bottom-panel w-100"/>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="FA17标签打印">
+                <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Label="生产订单号" @bind-Value="ProductionOrder"
+                                                  Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @ref="_fa17InternalBarcodeField"
+                                                  @bind-Value="ContentBarcode"
+                                                  @key="_fa17InternalBarcodeFieldKey"
+                                                  Label="内部条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫码录入，回车直接打印"
+                                                  OnKeyUp="OnFa17InternalBarcodeKeyUp"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <div class="result-list-grid industry-plate-grid">
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Type</span>
+                                            <MudTextField T="string" Value="@PlateType" ValueChanged="@OnPlateTypeChanged"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                          Class="plate-inline-input"/>
+                                        </div>
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Item No</span>
+                                            <MudTextField T="string" Value="@PlateItemNo" ValueChanged="@OnPlateItemNoChanged"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                          Class="plate-inline-input"/>
+                                        </div>
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Power Rate</span>
+                                            <MudTextField T="string" Value="@PlatePowerRate" ValueChanged="@OnPlatePowerRateChanged"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                          Class="plate-inline-input"/>
+                                        </div>
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Rated.Load</span>
+                                            <MudTextField T="string" Value="@PlateRatedLoad" ValueChanged="@OnPlateRatedLoadChanged"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                          Class="plate-inline-input"/>
+                                        </div>
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Duty Cycle</span>
+                                            <MudTextField T="string" Value="@PlateDutyCycle" ValueChanged="@OnPlateDutyCycleChanged"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" Dense="true" FullWidth="true"
+                                                          Class="plate-inline-input"/>
+                                        </div>
+                                        <div class="result-list-item industry-plate-field">
+                                            <span class="result-list-label">Serial No</span>
+                                            <MudTextField T="string" Value="@DisplayDash(ResolvedSerialNo)" ReadOnly="true"
+                                                          Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                                          FullWidth="true" TabIndex="-1"
+                                                          Class="plate-inline-input plate-serial-readonly font-monospace"/>
+                                        </div>
+                                    </div>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="d-flex">
+                        <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel w-100">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="12">
+                                    <MudTextField T="string" Value="@Fa17OuterBoxBarcode" ValueChanged="@OnFa17OuterBoxBarcodeChanged"
+                                                  Label="外箱条码"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Class="font-monospace barcode-entry-field"
+                                                  Immediate="true"
+                                                  Placeholder="扫描或输入外箱条码"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" Value="Fa17FullBoxCount" ValueChanged="OnFa17FullBoxCountChanged"
+                                                     Label="满箱数" Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" Value="@Fa17ScannedCountDisplay" ReadOnly="true"
+                                                  Label="当前已扫入" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                  Class="plate-serial-readonly font-monospace"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudRadioGroup Value="SelectedFa17LabelKind" ValueChanged="@OnFa17LabelKindChanged" T="int">
+                                        <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                                            <MudRadio Value="@(0)" Color="Color.Primary">条形码标签55*40</MudRadio>
+                                            <MudRadio Value="@(1)" Color="Color.Primary">二维码标签55*40</MudRadio>
+                                        </MudStack>
+                                    </MudRadioGroup>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
+                                               Margin="Margin.Dense" Variant="Variant.Outlined">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="PrintCount" Label="打印份数"
+                                                     Margin="Margin.Dense" Variant="Variant.Outlined" Min="1"/>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                                   Variant="Variant.Outlined"/>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="BindFa17OuterBoxManualAsync"
+                                               Disabled="@(!CanBindFa17OuterBox)"
+                                               FullWidth="true" Class="action-btn">
+                                        @(IsBindingFa17 ? "绑定中…" : "保存绑定")
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <MudPaper Outlined="true" Class="pa-3 fa17-bottom-panel">
+                            <MudText Typo="Typo.subtitle2" Class="mb-1 fa17-bottom-panel-title">已扫内部条码</MudText>
+                            <div class="scan-table-wrap fa17-bottom-panel-body">
+                                <MudTable Items="@Fa17ScanRows" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+                                    <HeaderContent>
+                                        <MudTh Style="width: 80px;">序号</MudTh>
+                                        <MudTh>内部条码</MudTh>
+                                        <MudTh Style="min-width: 140px;">扫入时间</MudTh>
+                                        <MudTh Style="width: 90px;">操作</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Index</MudTd>
+                                        <MudTd Class="font-monospace">@context.InternalBarcode</MudTd>
+                                        <MudTd Class="text-no-wrap">@context.ScannedAt.ToString("HH:mm:ss")</MudTd>
+                                        <MudTd>
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => RemoveFa17ScannedLine(context.Index - 1))">
+                                                删除
+                                            </MudButton>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260" Class="fa17-bottom-panel w-100"/>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="内部条码">
+                <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <MudPaper Outlined="true" Class="pa-3 fa17-bottom-panel d-flex flex-column">
+                            <MudTextField T="string" Value="@InternalBarcodePrefix" ValueChanged="@OnInternalBarcodePrefixChanged"
+                                          Label="条码前缀"
+                                          Margin="Margin.Dense"
+                                          Variant="Variant.Outlined"
+                                          Class="font-monospace"
+                                          Immediate="true"
+                                          Placeholder="例如 xxxxxx"/>
+                            <MudNumericField @bind-Value="PrintCount" Label="打印份数"
+                                             Margin="Margin.Dense" Variant="Variant.Outlined" Min="1" Class="mt-2"/>
+                            <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
+                                       Margin="Margin.Dense" Variant="Variant.Outlined" Class="mt-2">
+                                @foreach (var p in Printers)
+                                {
+                                    <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <div class="mt-auto pt-3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="PrintSubmit"
+                                           Disabled="@IsPrinting" FullWidth="true" Class="action-btn">
+                                    @(IsPrinting ? "打印中…" : "打印")
+                                </MudButton>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="fa17-bottom-col">
+                        <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260" Class="fa17-bottom-panel w-100"/>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+        </MudTabs>
+
+        @if (IndustryMainTab is 0)
+        {
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="200"/>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudItem>
+</MudGrid>
+
+
+@code {
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    string ProductionOrder { get; set; } = string.Empty;
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+    string PaperSize { get; set; } = "100*80";
+    DateTime? ProductionDate { get; set; } = DateTime.Today;
+    int PrintCount = 1;
+    int SelectedLabelKind { get; set; }
+    /// <summary>FA17：0 条形码 55*40，1 二维码 55*40。</summary>
+    int SelectedFa17LabelKind { get; set; }
+    string? Fa17OuterBoxBarcode { get; set; }
+    int Fa17FullBoxCount { get; set; } = 10;
+    readonly List<Fa17ScannedLine> Fa17ScannedLines = new();
+    bool IsBindingFa17 { get; set; }
+    string Fa17ScannedCountDisplay => $"{Fa17ScannedLines.Count} / {Fa17FullBoxCount}";
+    bool CanBindFa17OuterBox =>
+        !IsBindingFa17
+        && Fa17ScannedLines.Count >= Fa17FullBoxCount
+        && !string.IsNullOrWhiteSpace(Fa17OuterBoxBarcode);
+    List<Fa17ScanRow> Fa17ScanRows => Fa17ScannedLines
+        .Select((line, index) => new Fa17ScanRow(index + 1, line.InternalBarcode, line.ScannedAt))
+        .ToList();
+    string? WaLwOuterBoxBarcode { get; set; }
+    int WaLwFullBoxCount { get; set; } = 10;
+    readonly List<WaLwScannedLine> WaLwScannedLines = new();
+    bool IsBindingWaLw { get; set; }
+    string WaLwScannedCountDisplay => $"{WaLwScannedLines.Count} / {WaLwFullBoxCount}";
+    bool CanBindWaLwOuterBox =>
+        !IsBindingWaLw
+        && WaLwScannedLines.Count >= WaLwFullBoxCount
+        && !string.IsNullOrWhiteSpace(WaLwOuterBoxBarcode);
+    List<WaLwScanRow> WaLwScanRows => WaLwScannedLines
+        .Select((line, index) => new WaLwScanRow(index + 1, line.InternalBarcode, line.ScannedAt))
+        .ToList();
+    string? Fa42OuterBoxBarcode { get; set; }
+    int Fa42FullBoxCount { get; set; } = 10;
+    readonly List<Fa42ScannedLine> Fa42ScannedLines = new();
+    bool IsBindingFa42 { get; set; }
+    string Fa42ScannedCountDisplay => $"{Fa42ScannedLines.Count} / {Fa42FullBoxCount}";
+    bool CanBindFa42OuterBox =>
+        !IsBindingFa42
+        && Fa42ScannedLines.Count >= Fa42FullBoxCount
+        && !string.IsNullOrWhiteSpace(Fa42OuterBoxBarcode);
+    List<Fa42ScanRow> Fa42ScanRows => Fa42ScannedLines
+        .Select((line, index) => new Fa42ScanRow(index + 1, line.InternalBarcode, line.ScannedAt))
+        .ToList();
+    string? InternalBarcodePrefix { get; set; }
+    /// <summary>预览：首张条码（滚码由打印引擎按 StartValue=1、PrintCount 生成）。</summary>
+    string InternalBarcodePreviewDisplay =>
+        BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix) is { } p ? $"{p}-0001" : "-";
+    string InternalBarcodeRollRangeDisplay =>
+        PrintCount < 1 ? "-" : $"0001 ~ {PrintCount:D4}";
+    int _industryMainTab;
+    /// <summary>0 通用铭牌，1 W*A-LW，2 FA42A，3 FA17，4 内部条码。</summary>
+    int IndustryMainTab
+    {
+        get => _industryMainTab;
+        set
+        {
+            if (_industryMainTab == value) return;
+            var prev = _industryMainTab;
+            _industryMainTab = value;
+            _ = PersistIndustryMainTabAsync();
+            if ((value == 1 || value == 2) && prev != value)
+                ProductionDate = DateTime.Today;
+        }
+    }
+    /// <summary>0 W1A-LW，1 W8A-LW。</summary>
+    int SelectedLwVariant { get; set; }
+    /// <summary>是否在标签右上角打印 CE、WEEE 图（img1/img2）；各型号独立记忆，W8A 默认关。</summary>
+    bool LwShowCertificationIcons { get; set; } = true;
+    string? LwName { get; set; } = "电动推杆";
+    string? LwDrawing { get; set; } = "GKV2803010011";
+    string? LwSupplierCode { get; set; } = "B12712";
+    string? LwCustomerPrefix { get; set; } = "3ACET";
+    string? LwSupplierProduct { get; set; } = "201190540";
+    string? LwBatch { get; set; } = "1";
+    /// <summary>W*A-LW 专用内部条码（不入库 localStorage；打印成功后清空）。</summary>
+    string? LwInternalBarcode { get; set; }
+    /// <summary>0 FA42A-V，1 FA42A-H。</summary>
+    int SelectedFa42Variant { get; set; }
+    string? Fa42Name { get; set; } = "电动推杆";
+    string? Fa42Drawing { get; set; } = "CE4P1814020002";
+    string? Fa42SupplierCode { get; set; } = "B12712";
+    string? Fa42CustomerPrefix { get; set; } = "3ACET";
+    string? Fa42SupplierProduct { get; set; } = "201665289";
+    string? Fa42Batch { get; set; } = "1";
+    string? Fa42InternalBarcode { get; set; }
+    string? PlateType { get; set; } = "JC35W8";
+    string? PlateItemNo { get; set; } = "xxxxxxxxxxxx";
+    string? PlatePowerRate { get; set; } = "24Vdc / 1.5A";
+    string? PlateRatedLoad { get; set; } = "500N";
+    string? PlateDutyCycle { get; set; } = "20%Max,4min/16min";
+    string? ContentBarcode { get; set; }
+    string? ResolvedSerialNo => BuildSerialNo(ProductionOrder, ContentBarcode);
+    static string DisplayDash(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value!;
+
+    /// <summary>W*A-LW 只读「月份(MM)」与客户标识中的月份：与「生产日期」同一月份，便于与打印内容一致。</summary>
+    string LwMonthMm =>
+        (ProductionDate ?? DateTime.Today).ToString("MM", CultureInfo.InvariantCulture);
+
+    string LwTail4Display =>
+        NormalizeInternalBarcodePart(LwInternalBarcode) == null ? "-" : LwTail4FromBarcode(LwInternalBarcode);
+
+    static string LwTail4FromBarcode(string? raw)
+    {
+        var inner = NormalizeInternalBarcodePart(raw);
+        if (string.IsNullOrEmpty(inner))
+            return "----";
+        return inner.Length >= 4 ? inner[^4..] : inner.PadLeft(4, '0');
+    }
+
+    string LwCompositeDisplay()
+    {
+        var innerOk = NormalizeInternalBarcodePart(LwInternalBarcode) != null;
+        var p = LwCustomerPrefix?.Trim() ?? "";
+        var b = LwBatch?.Trim() ?? "";
+        var tail = innerOk ? LwTail4FromBarcode(LwInternalBarcode!) : "----";
+        return $"{p}{LwMonthMm}{b}{tail}";
+    }
+
+    /// <summary>W*A-LW 二维码：供应商代码*客户标识*供应商产品代码。</summary>
+    string LwQrCodeValue() =>
+        $"{LwSupplierCode?.Trim() ?? ""}*{LwCompositeDisplay()}*{LwSupplierProduct?.Trim() ?? ""}";
+
+    string Fa42MonthMm =>
+        (ProductionDate ?? DateTime.Today).ToString("MM", CultureInfo.InvariantCulture);
+
+    string Fa42Tail4Display =>
+        NormalizeInternalBarcodePart(Fa42InternalBarcode) == null ? "-" : LwTail4FromBarcode(Fa42InternalBarcode);
+
+    string Fa42CompositeDisplay()
+    {
+        var innerOk = NormalizeInternalBarcodePart(Fa42InternalBarcode) != null;
+        var p = Fa42CustomerPrefix?.Trim() ?? "";
+        var b = Fa42Batch?.Trim() ?? "";
+        var tail = innerOk ? LwTail4FromBarcode(Fa42InternalBarcode!) : "----";
+        return $"{p}{Fa42MonthMm}{b}{tail}";
+    }
+
+    string Fa42QrCodeValue() =>
+        $"{Fa42SupplierCode?.Trim() ?? ""}*{Fa42CompositeDisplay()}*{Fa42SupplierProduct?.Trim() ?? ""}";
+
+    static string Fa42BundleStorageKey(int variant, string field) =>
+        $"labelIndustry.fa42V{variant}.{field}";
+
+    readonly record struct Fa42VariantDefaults(
+        string Name,
+        string Drawing,
+        string SupplierCode,
+        string CustomerPrefix,
+        string SupplierProduct,
+        string Batch);
+
+    static Fa42VariantDefaults Fa42DefaultsForVariant(int variant) =>
+        variant == 0
+            ? new Fa42VariantDefaults("电动推杆", "CE4P1814020002", "B12712", "3ACET", "201665289", "1")
+            : new Fa42VariantDefaults("电动推杆", "CE4P1814020002a", "B12712", "3ACET", "201751297", "1");
+
+    static string LwBundleStorageKey(int variant, string field) =>
+        $"labelIndustry.lwV{variant}.{field}";
+
+    readonly record struct LwVariantDefaults(
+        string Name,
+        string Drawing,
+        string SupplierCode,
+        string CustomerPrefix,
+        string SupplierProduct,
+        string Batch,
+        bool ShowCertIcons);
+
+    static LwVariantDefaults LwDefaultsForVariant(int variant) =>
+        variant == 0
+            ? new LwVariantDefaults("电动推杆", "GKV2803010011", "B12712", "3ACET", "201190540", "1", true)
+            : new LwVariantDefaults("四驱电动推杆", "HAV1806350007", "B12712", "3ACET", "201663543", "3", false);
+
+    string FormatPlateDate() =>
+        ProductionDate.HasValue
+            ? ProductionDate.Value.ToString("yyyy.MM.dd", System.Globalization.CultureInfo.InvariantCulture)
+            : "-";
+
+    bool _suppressIndustryPersist;
+    bool _industryUiRestoredFromStorage;
+    bool _suppressLwPersist;
+    bool _lwUiRestoredFromStorage;
+    bool _suppressFa42Persist;
+    bool _fa42UiRestoredFromStorage;
+    /// <summary>递增后 MudTextField 重建，确保打印成功后内部条码框真正清空（Mud 受控输入偶发不同步）。</summary>
+    int _generalInternalBarcodeFieldKey;
+    int _waLwInternalBarcodeFieldKey;
+    int _fa42InternalBarcodeFieldKey;
+    int _fa17InternalBarcodeFieldKey;
+    MudTextField<string>? _generalInternalBarcodeField;
+    MudTextField<string>? _waLwInternalBarcodeField;
+    MudTextField<string>? _fa42InternalBarcodeField;
+    MudTextField<string>? _fa17InternalBarcodeField;
+    bool _focusGeneralInternalBarcodeAfterRender;
+    bool _focusWaLwInternalBarcodeAfterRender;
+    bool _focusFa42InternalBarcodeAfterRender;
+    bool _focusFa17InternalBarcodeAfterRender;
+
+    async Task PersistIndustryUiAsync()
+    {
+        if (_suppressIndustryPersist)
+            return;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryPlateType, PlateType ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryPlateItemNo, PlateItemNo ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryPlatePowerRate, PlatePowerRate ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryPlateRatedLoad, PlateRatedLoad ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryPlateDutyCycle, PlateDutyCycle ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryLabelKind,
+                SelectedLabelKind.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa17LabelKind,
+                SelectedFa17LabelKind.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa17FullBoxCount,
+                Fa17FullBoxCount.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa17OuterBoxBarcode, Fa17OuterBoxBarcode ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryWaLwFullBoxCount,
+                WaLwFullBoxCount.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryWaLwOuterBoxBarcode, WaLwOuterBoxBarcode ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa42FullBoxCount,
+                Fa42FullBoxCount.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa42OuterBoxBarcode, Fa42OuterBoxBarcode ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryInternalBarcodePrefix, InternalBarcodePrefix ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustrySelectedPrinter, SelectedPrinter ?? "");
+        }
+        catch
+        {
+            /* 浏览器存储不可用时不阻断操作 */
+        }
+    }
+
+    async Task RestoreIndustryUiFromLocalStorageAsync()
+    {
+        _suppressIndustryPersist = true;
+        try
+        {
+            PlateType = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryPlateType, "JC35W8");
+            PlateItemNo = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryPlateItemNo, "xxxxxxxxxxxx");
+            PlatePowerRate = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryPlatePowerRate, "24Vdc / 1.5A");
+            PlateRatedLoad = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryPlateRatedLoad, "500N");
+            PlateDutyCycle =
+                await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryPlateDutyCycle, "20%Max,4min/16min");
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryLabelKind))
+            {
+                var kindStr = await LocalStorage.GetStringAsync(StorageKeys.IndustryLabelKind);
+                if (int.TryParse(kindStr, out var k) && k is >= 0 and <= 3)
+                    SelectedLabelKind = k;
+            }
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryFa17LabelKind))
+            {
+                var fa17Kind = await LocalStorage.GetStringAsync(StorageKeys.IndustryFa17LabelKind);
+                if (int.TryParse(fa17Kind, out var fk) && fk is 0 or 1)
+                    SelectedFa17LabelKind = fk;
+            }
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryFa17FullBoxCount))
+            {
+                var fullBox = await LocalStorage.GetStringAsync(StorageKeys.IndustryFa17FullBoxCount);
+                if (int.TryParse(fullBox, out var fc) && fc >= 1)
+                    Fa17FullBoxCount = fc;
+            }
+
+            Fa17OuterBoxBarcode =
+                await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryFa17OuterBoxBarcode, "");
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryWaLwFullBoxCount))
+            {
+                var waLwFullBox = await LocalStorage.GetStringAsync(StorageKeys.IndustryWaLwFullBoxCount);
+                if (int.TryParse(waLwFullBox, out var wfc) && wfc >= 1)
+                    WaLwFullBoxCount = wfc;
+            }
+
+            WaLwOuterBoxBarcode =
+                await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryWaLwOuterBoxBarcode, "");
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryFa42FullBoxCount))
+            {
+                var fa42FullBox = await LocalStorage.GetStringAsync(StorageKeys.IndustryFa42FullBoxCount);
+                if (int.TryParse(fa42FullBox, out var ffc) && ffc >= 1)
+                    Fa42FullBoxCount = ffc;
+            }
+
+            Fa42OuterBoxBarcode =
+                await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryFa42OuterBoxBarcode, "");
+
+            InternalBarcodePrefix =
+                await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryInternalBarcodePrefix, "");
+            await LocalStorage.RemoveAsync(StorageKeys.IndustryInternalBarcodeRollSeq);
+
+            var savedPrinter = await LocalStorage.GetStringAsync(StorageKeys.IndustrySelectedPrinter);
+            if (!string.IsNullOrEmpty(savedPrinter) && Printers.Contains(savedPrinter))
+                SelectedPrinter = savedPrinter;
+        }
+        catch
+        {
+            /* ignore */
+        }
+        finally
+        {
+            _suppressIndustryPersist = false;
+        }
+    }
+
+    Task OnPlateTypeChanged(string? v) => SetPlateAndPersistAsync(() => PlateType = v);
+
+    Task OnPlateItemNoChanged(string? v) => SetPlateAndPersistAsync(() => PlateItemNo = v);
+
+    Task OnPlatePowerRateChanged(string? v) => SetPlateAndPersistAsync(() => PlatePowerRate = v);
+
+    Task OnPlateRatedLoadChanged(string? v) => SetPlateAndPersistAsync(() => PlateRatedLoad = v);
+
+    Task OnPlateDutyCycleChanged(string? v) => SetPlateAndPersistAsync(() => PlateDutyCycle = v);
+
+    async Task SetPlateAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistIndustryUiAsync();
+    }
+
+    async Task OnLabelKindChanged(int v)
+    {
+        SelectedLabelKind = v;
+        await PersistIndustryUiAsync();
+    }
+
+    async Task OnFa17LabelKindChanged(int v)
+    {
+        SelectedFa17LabelKind = v;
+        await PersistIndustryUiAsync();
+    }
+
+    Task OnFa17OuterBoxBarcodeChanged(string? v) =>
+        SetFa17UiAndPersistAsync(() => Fa17OuterBoxBarcode = v?.Trim());
+
+    async Task OnFa17FullBoxCountChanged(int v)
+    {
+        Fa17FullBoxCount = v < 1 ? 1 : v;
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task OnWaLwOuterBoxBarcodeChanged(string? v) =>
+        SetWaLwBindUiAndPersistAsync(() => WaLwOuterBoxBarcode = v?.Trim());
+
+    async Task OnWaLwFullBoxCountChanged(int v)
+    {
+        WaLwFullBoxCount = v < 1 ? 1 : v;
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetWaLwBindUiAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task OnFa42OuterBoxBarcodeChanged(string? v) =>
+        SetFa42BindUiAndPersistAsync(() => Fa42OuterBoxBarcode = v?.Trim());
+
+    async Task OnFa42FullBoxCountChanged(int v)
+    {
+        Fa42FullBoxCount = v < 1 ? 1 : v;
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetFa42BindUiAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetFa17UiAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task OnInternalBarcodePrefixChanged(string? v) =>
+        SetInternalBarcodeUiAndPersistAsync(() => InternalBarcodePrefix = v?.Trim());
+
+    async Task SetInternalBarcodeUiAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistIndustryUiAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static string? BuildInternalBarcodePrefixOrNull(string? prefix)
+    {
+        var p = (prefix ?? string.Empty).Trim();
+        return string.IsNullOrEmpty(p) ? null : p;
+    }
+
+    /// <summary>传给 LocalAgent：前缀 + 4 位滚码占位符，序号由 StartValue～StartValue+PrintCount-1 决定。</summary>
+    string? BuildInternalBarcodePrintPattern()
+    {
+        var p = BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix);
+        return p == null ? null : $"{p}-{{index:4}}";
+    }
+
+    async Task OnPrinterChanged(string? v)
+    {
+        SelectedPrinter = v;
+        await PersistIndustryUiAsync();
+    }
+
+    async Task PersistIndustryMainTabAsync()
+    {
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryMainTab,
+                IndustryMainTab.ToString(CultureInfo.InvariantCulture));
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task PersistLwVariantBundleAsync(int variant)
+    {
+        try
+        {
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "name"), LwName ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "drawing"), LwDrawing ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "supplierCode"), LwSupplierCode ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "customerPrefix"), LwCustomerPrefix ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "supplierProduct"), LwSupplierProduct ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "batch"), LwBatch ?? "");
+            await LocalStorage.SetAsync(LwBundleStorageKey(variant, "showCert"),
+                LwShowCertificationIcons ? "1" : "0");
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task PersistLwUiAsync()
+    {
+        if (_suppressLwPersist)
+            return;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryLwVariant,
+                SelectedLwVariant.ToString(CultureInfo.InvariantCulture));
+            await PersistLwVariantBundleAsync(SelectedLwVariant);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task LoadLwVariantBundleIntoUiAsync(int variant)
+    {
+        var d = LwDefaultsForVariant(variant);
+        LwName = WalwTextAfterPrefix(
+            await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "name"), d.Name), "名称：", "名称:");
+        LwDrawing = WalwTextAfterPrefix(
+            await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "drawing"), d.Drawing), "图号：", "图号:");
+        LwSupplierCode =
+            await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "supplierCode"), d.SupplierCode);
+        LwCustomerPrefix =
+            await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "customerPrefix"), d.CustomerPrefix);
+        LwSupplierProduct =
+            await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "supplierProduct"), d.SupplierProduct);
+        LwBatch = await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "batch"), d.Batch);
+        LwInternalBarcode = null;
+
+        var certDefault = d.ShowCertIcons ? "1" : "0";
+        var cert = await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "showCert"), certDefault);
+        LwShowCertificationIcons = cert != "0";
+    }
+
+    async Task TryMigrateLegacyLwToV0IfNeededAsync()
+    {
+        if (await LocalStorage.ContainsKeyAsync(LwBundleStorageKey(0, "name")))
+            return;
+        var legacyName = await LocalStorage.GetStringAsync(StorageKeys.IndustryLwName);
+        if (string.IsNullOrWhiteSpace(legacyName))
+            return;
+        try
+        {
+            var name = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwName, "");
+            var drawing = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwDrawing, "");
+            var supplierCode = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwSupplierCode, "");
+            var customerPrefix = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwCustomerPrefix, "");
+            var supplierProduct = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwSupplierProduct, "");
+            var batch = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwBatch, "");
+            var cert = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryLwShowCertIcons, "1");
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "name"), name);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "drawing"), drawing);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "supplierCode"), supplierCode);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "customerPrefix"), customerPrefix);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "supplierProduct"), supplierProduct);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "batch"), batch);
+            await LocalStorage.SetAsync(LwBundleStorageKey(0, "showCert"), cert);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task RestoreLwFromLocalStorageAsync()
+    {
+        _suppressLwPersist = true;
+        try
+        {
+            await TryMigrateLegacyLwToV0IfNeededAsync();
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryLwVariant))
+            {
+                var v = await LocalStorage.GetStringAsync(StorageKeys.IndustryLwVariant);
+                if (int.TryParse(v, out var iv) && iv is 0 or 1)
+                    SelectedLwVariant = iv;
+            }
+
+            await LoadLwVariantBundleIntoUiAsync(SelectedLwVariant);
+            if (_industryMainTab == 1)
+                ProductionDate = DateTime.Today;
+        }
+        catch
+        {
+            /* ignore */
+        }
+        finally
+        {
+            _suppressLwPersist = false;
+        }
+    }
+
+    async Task PersistFa42VariantBundleAsync(int variant)
+    {
+        try
+        {
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "name"), Fa42Name ?? "");
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "drawing"), Fa42Drawing ?? "");
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "supplierCode"), Fa42SupplierCode ?? "");
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "customerPrefix"), Fa42CustomerPrefix ?? "");
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "supplierProduct"), Fa42SupplierProduct ?? "");
+            await LocalStorage.SetAsync(Fa42BundleStorageKey(variant, "batch"), Fa42Batch ?? "");
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task PersistFa42UiAsync()
+    {
+        if (_suppressFa42Persist)
+            return;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa42Variant,
+                SelectedFa42Variant.ToString(CultureInfo.InvariantCulture));
+            await PersistFa42VariantBundleAsync(SelectedFa42Variant);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    async Task LoadFa42VariantBundleIntoUiAsync(int variant)
+    {
+        var d = Fa42DefaultsForVariant(variant);
+        Fa42Name = WalwTextAfterPrefix(
+            await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "name"), d.Name), "名称：", "名称:");
+        Fa42Drawing = WalwTextAfterPrefix(
+            await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "drawing"), d.Drawing), "图号：", "图号:");
+        Fa42SupplierCode =
+            await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "supplierCode"), d.SupplierCode);
+        Fa42CustomerPrefix =
+            await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "customerPrefix"), d.CustomerPrefix);
+        Fa42SupplierProduct =
+            await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "supplierProduct"), d.SupplierProduct);
+        Fa42Batch = await LocalStorage.GetStringOrDefaultAsync(Fa42BundleStorageKey(variant, "batch"), d.Batch);
+        Fa42InternalBarcode = null;
+    }
+
+    async Task RestoreFa42FromLocalStorageAsync()
+    {
+        _suppressFa42Persist = true;
+        try
+        {
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryFa42Variant))
+            {
+                var v = await LocalStorage.GetStringAsync(StorageKeys.IndustryFa42Variant);
+                if (int.TryParse(v, out var iv) && iv is 0 or 1)
+                    SelectedFa42Variant = iv;
+            }
+
+            await LoadFa42VariantBundleIntoUiAsync(SelectedFa42Variant);
+            if (_industryMainTab == 2)
+                ProductionDate = DateTime.Today;
+        }
+        catch
+        {
+            /* ignore */
+        }
+        finally
+        {
+            _suppressFa42Persist = false;
+        }
+    }
+
+    async Task OnLwShowCertIconsChanged(bool v)
+    {
+        LwShowCertificationIcons = v;
+        await PersistLwUiAsync();
+    }
+
+    async Task RestoreIndustryMainTabFromStorageAsync()
+    {
+        try
+        {
+            if (!await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryMainTab))
+                return;
+            var t = await LocalStorage.GetStringAsync(StorageKeys.IndustryMainTab);
+            if (int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ti) && ti is >= 0 and <= 4)
+            {
+                // 旧版 Tab 索引：2=FA17，3=内部条码；新版在 2 插入 FA42A 后顺延
+                if (ti >= 2 && !await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryFa42Variant))
+                    ti = Math.Min(ti + 1, 4);
+                _industryMainTab = ti;
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    Task OnLwNameChanged(string? v) =>
+        SetLwAndPersistAsync(() => LwName = WalwTextAfterPrefix(v?.Trim(), "名称：", "名称:"));
+
+    Task OnLwDrawingChanged(string? v) =>
+        SetLwAndPersistAsync(() => LwDrawing = WalwTextAfterPrefix(v?.Trim(), "图号：", "图号:"));
+
+    Task OnLwSupplierCodeChanged(string? v) => SetLwAndPersistAsync(() => LwSupplierCode = v);
+
+    Task OnLwSupplierProductChanged(string? v) => SetLwAndPersistAsync(() => LwSupplierProduct = v);
+
+    Task OnLwCustomerPrefixChanged(string? v) => SetLwAndPersistAsync(() => LwCustomerPrefix = v);
+
+    Task OnLwBatchChanged(string? v) => SetLwAndPersistAsync(() => LwBatch = v);
+
+    Task OnLwInternalBarcodeChanged(string? v) => SetLwAndPersistAsync(() => LwInternalBarcode = v);
+
+    async Task SetLwAndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistLwUiAsync();
+    }
+
+    async Task OnLwVariantChanged(int v)
+    {
+        if (v == SelectedLwVariant)
+            return;
+        var prev = SelectedLwVariant;
+        await PersistLwVariantBundleAsync(prev);
+        SelectedLwVariant = v;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryLwVariant,
+                v.ToString(CultureInfo.InvariantCulture));
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        await LoadLwVariantBundleIntoUiAsync(v);
+        ProductionDate = DateTime.Today;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task OnFa42NameChanged(string? v) =>
+        SetFa42AndPersistAsync(() => Fa42Name = WalwTextAfterPrefix(v?.Trim(), "名称：", "名称:"));
+
+    Task OnFa42DrawingChanged(string? v) =>
+        SetFa42AndPersistAsync(() => Fa42Drawing = WalwTextAfterPrefix(v?.Trim(), "图号：", "图号:"));
+
+    Task OnFa42SupplierCodeChanged(string? v) => SetFa42AndPersistAsync(() => Fa42SupplierCode = v);
+
+    Task OnFa42SupplierProductChanged(string? v) => SetFa42AndPersistAsync(() => Fa42SupplierProduct = v);
+
+    Task OnFa42CustomerPrefixChanged(string? v) => SetFa42AndPersistAsync(() => Fa42CustomerPrefix = v);
+
+    Task OnFa42BatchChanged(string? v) => SetFa42AndPersistAsync(() => Fa42Batch = v);
+
+    Task OnFa42InternalBarcodeChanged(string? v) => SetFa42AndPersistAsync(() => Fa42InternalBarcode = v);
+
+    async Task SetFa42AndPersistAsync(Action assign)
+    {
+        assign();
+        await PersistFa42UiAsync();
+    }
+
+    async Task OnFa42VariantChanged(int v)
+    {
+        if (v == SelectedFa42Variant)
+            return;
+        var prev = SelectedFa42Variant;
+        await PersistFa42VariantBundleAsync(prev);
+        SelectedFa42Variant = v;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.IndustryFa42Variant,
+                v.ToString(CultureInfo.InvariantCulture));
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        await LoadFa42VariantBundleIntoUiAsync(v);
+        ProductionDate = DateTime.Today;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "LabelPrintForZY_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+
+        if (firstRender && !_industryUiRestoredFromStorage)
+        {
+            _industryUiRestoredFromStorage = true;
+            await RestoreIndustryUiFromLocalStorageAsync();
+        }
+
+        if (firstRender && !_lwUiRestoredFromStorage)
+        {
+            _lwUiRestoredFromStorage = true;
+            await RestoreIndustryMainTabFromStorageAsync();
+            await RestoreLwFromLocalStorageAsync();
+        }
+
+        if (firstRender && !_fa42UiRestoredFromStorage)
+        {
+            _fa42UiRestoredFromStorage = true;
+            await RestoreFa42FromLocalStorageAsync();
+        }
+
+        if (firstRender)
+            await InvokeAsync(StateHasChanged);
+
+        if (_focusGeneralInternalBarcodeAfterRender)
+        {
+            _focusGeneralInternalBarcodeAfterRender = false;
+            if (_generalInternalBarcodeField is not null)
+                await _generalInternalBarcodeField.FocusAsync();
+        }
+
+        if (_focusWaLwInternalBarcodeAfterRender)
+        {
+            _focusWaLwInternalBarcodeAfterRender = false;
+            if (_waLwInternalBarcodeField is not null)
+                await _waLwInternalBarcodeField.FocusAsync();
+        }
+
+        if (_focusFa42InternalBarcodeAfterRender)
+        {
+            _focusFa42InternalBarcodeAfterRender = false;
+            if (_fa42InternalBarcodeField is not null)
+                await _fa42InternalBarcodeField.FocusAsync();
+        }
+
+        if (_focusFa17InternalBarcodeAfterRender)
+        {
+            _focusFa17InternalBarcodeAfterRender = false;
+            if (_fa17InternalBarcodeField is not null)
+                await _fa17InternalBarcodeField.FocusAsync();
+        }
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task ScrollScanTableToBottomAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("blazorScrollScanTableToBottom");
+        }
+        catch (JSException)
+        {
+            // scanInterop.js 未加载时静默跳过（如浏览器缓存旧脚本）
+        }
+    }
+
+    /// <summary>
+    /// 规范化内部条码：去掉首尾与中间空白后，仅取<strong>末尾连续 4 个字符</strong>作为序列号（如扫码 <c>FA8-0039</c> 得到 <c>0039</c>），不按分隔符拆分。
+    /// 不足 4 个字符时保留原串，便于短码手工录入。
+    /// </summary>
+    static string? NormalizeInternalBarcodePart(string? raw)
+    {
+        var s = (raw ?? string.Empty).Trim().Replace(" ", "").Replace("\u3000", "");
+        if (s.Length == 0)
+            return null;
+        return s.Length >= 4 ? s[^4..] : s;
+    }
+
+
+    static string? NormalizeProductionOrder9Digits(string? raw)
+    {
+        var digits = new string((raw ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+            return null;
+        if (digits.Length >= 9)
+            return digits[^9..];
+        return digits.PadLeft(9, '0');
+    }
+
+    /// <summary>Serial = 9 位生产订单 + 内部条码。</summary>
+    static string? BuildSerialNo(string? productionOrder, string? contentBarcode)
+    {
+        var order9 = NormalizeProductionOrder9Digits(productionOrder);
+        var inner = NormalizeInternalBarcodePart(contentBarcode);
+        if (order9 == null || inner == null)
+            return null;
+        return order9 +'-'+ inner;
+    }
+
+    record ScannedLine(string Code, DateTime? ProductionTime);
+
+    (bool ok, float w, float h) TryParsePaper(string paper)
+    {
+        try
+        {
+            var parts = (paper ?? "").Split(
+                new char[] { '*', 'x', 'X' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (parts.Length != 2) return (false, 0, 0);
+            return (true, float.Parse(parts[0]), float.Parse(parts[1]));
+        }
+        catch
+        {
+            return (false, 0, 0);
+        }
+    }
+
+    static bool IsScannerSubmitEnter(KeyboardEventArgs e) =>
+        string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(e.Code, "Enter", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(e.Code, "NumpadEnter", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>通用铭牌：内部条码框扫码结束（回车）后尝试直接打印。</summary>
+    async Task OnGeneralInternalBarcodeKeyUp(KeyboardEventArgs e)
+    {
+        if (!IsScannerSubmitEnter(e))
+            return;
+        if (IndustryMainTab != 0 || IsPrinting)
+            return;
+        await PrintSubmit();
+    }
+
+    /// <summary>W*A-LW：内部条码框扫码结束（回车）后打印并记入待绑定列表。</summary>
+    async Task OnWaLwInternalBarcodeKeyUp(KeyboardEventArgs e)
+    {
+        if (!IsScannerSubmitEnter(e))
+            return;
+        if (IndustryMainTab != 1 || IsPrinting || IsBindingWaLw)
+            return;
+        await HandleWaLwInternalBarcodeScanAsync();
+    }
+
+    async Task OnFa42InternalBarcodeKeyUp(KeyboardEventArgs e)
+    {
+        if (!IsScannerSubmitEnter(e))
+            return;
+        if (IndustryMainTab != 2 || IsPrinting || IsBindingFa42)
+            return;
+        await HandleFa42InternalBarcodeScanAsync();
+    }
+
+    async Task OnFa17InternalBarcodeKeyUp(KeyboardEventArgs e)
+    {
+        if (!IsScannerSubmitEnter(e))
+            return;
+        if (IndustryMainTab != 3 || IsPrinting || IsBindingFa17)
+            return;
+        await HandleFa17InternalBarcodeScanAsync();
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (IndustryMainTab == 1 || IndustryMainTab == 2)
+            return;
+
+        if (IndustryMainTab == 3)
+            return;
+
+        if (IndustryMainTab == 4)
+        {
+            await PrintSubmitInternalBarcodeAsync();
+            return;
+        }
+
+        if (NormalizeProductionOrder9Digits(ProductionOrder) == null)
+        {
+            SnackbarHelper.Show("生产订单号中需包含数字，以组成 Serial 前 9 位", Severity.Warning);
+            return;
+        }
+
+        if (NormalizeInternalBarcodePart(ContentBarcode) == null)
+        {
+            SnackbarHelper.Show("请输入内部条码（内部条码）", Severity.Warning);
+            return;
+        }
+
+        var serial = BuildSerialNo(ProductionOrder, ContentBarcode);
+        if (string.IsNullOrEmpty(serial))
+        {
+            SnackbarHelper.Show("无法组成 Serial（生产订单 + 内部条码）", Severity.Warning);
+            return;
+        }
+
+        List<PrintBlock> list = new List<PrintBlock>();
+
+        if (SelectedLabelKind == 0)
+        {
+            PaperSize = "55*40";
+            list = BarCode55x40();
+        }
+        else if (SelectedLabelKind == 1)
+        {
+            PaperSize = "55*40";
+            list = QrCode55x40();
+        }
+        else if (SelectedLabelKind == 2)
+        {
+            PaperSize = "40*25";
+            list = BarCode40x25();
+        }
+        else if (SelectedLabelKind == 3)
+        {
+            PaperSize = "40*25";
+            list = QrCode40x25();
+        }
+
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        var (paperOk, w, h) = TryParsePaper(PaperSize);
+        if (!paperOk || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误（如 100*80）", Severity.Error);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            return;
+        }
+
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = false,
+            Blocks = list
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            ContentBarcode = string.Empty;
+            _generalInternalBarcodeFieldKey++;
+            _focusGeneralInternalBarcodeAfterRender = true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>W*A-LW：扫内部条码 → 打印铭牌 → 记入待绑定列表；满箱后绑定外箱。</summary>
+    async Task HandleWaLwInternalBarcodeScanAsync()
+    {
+        var code = (LwInternalBarcode ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            LwInternalBarcode = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (NormalizeInternalBarcodePart(code) == null)
+        {
+            SnackbarHelper.Show("内部条码格式无效", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(LwBatch))
+        {
+            SnackbarHelper.Show("请填写批次(当月)", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(LwCustomerPrefix))
+        {
+            SnackbarHelper.Show("请填写客户前缀", Severity.Warning);
+            return;
+        }
+
+        var duplicateIndex = WaLwScannedLines.FindIndex(x =>
+            string.Equals(x.InternalBarcode, code, StringComparison.OrdinalIgnoreCase));
+        if (duplicateIndex >= 0)
+        {
+            SnackbarHelper.Show($"条码重码：与序号 {duplicateIndex + 1} 重复", Severity.Warning);
+            AppendLog($"W*A-LW 重码拦截：{code}，与序号 {duplicateIndex + 1} 重复。");
+            LwInternalBarcode = string.Empty;
+            _waLwInternalBarcodeFieldKey++;
+            _focusWaLwInternalBarcodeAfterRender = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (WaLwScannedLines.Count >= WaLwFullBoxCount)
+        {
+            SnackbarHelper.Show($"已达满箱数 {WaLwFullBoxCount}，请先绑定外箱", Severity.Warning);
+            AppendLog($"W*A-LW 满箱拦截：{code} 未加入列表，请先绑定。");
+            return;
+        }
+
+        LwInternalBarcode = code;
+        var printed = await TryPrintWaLwNameplateAsync();
+        if (!printed)
+            return;
+
+        WaLwScannedLines.Add(new WaLwScannedLine(code, DateTime.Now));
+        AppendLog($"W*A-LW 已扫入：{code}（{WaLwScannedLines.Count}/{WaLwFullBoxCount}）");
+
+        LwInternalBarcode = string.Empty;
+        _waLwInternalBarcodeFieldKey++;
+        _focusWaLwInternalBarcodeAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(1);
+        await ScrollScanTableToBottomAsync();
+
+        if (WaLwScannedLines.Count >= WaLwFullBoxCount)
+        {
+            SnackbarHelper.Show($"已满箱（{WaLwFullBoxCount} 条），请扫描外箱条码并点击「保存绑定」", Severity.Info);
+            AppendLog("W*A-LW 已满箱，请扫描外箱条码后点击「保存绑定」，绑定成功后将清空列表以便下一箱。");
+        }
+    }
+
+    void RemoveWaLwScannedLine(int index)
+    {
+        if (index < 0 || index >= WaLwScannedLines.Count)
+            return;
+        var removed = WaLwScannedLines[index];
+        WaLwScannedLines.RemoveAt(index);
+        AppendLog($"W*A-LW 已删除序号 {index + 1}：{removed.InternalBarcode}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    Task BindWaLwOuterBoxManualAsync() => TryBindWaLwOuterBoxAsync();
+
+    async Task TryBindWaLwOuterBoxAsync()
+    {
+        if (IsBindingWaLw)
+            return;
+
+        if (WaLwScannedLines.Count < WaLwFullBoxCount)
+        {
+            SnackbarHelper.Show($"未满箱（{WaLwScannedLines.Count}/{WaLwFullBoxCount}），请继续扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(WaLwOuterBoxBarcode))
+        {
+            SnackbarHelper.Show("请先扫描或输入外箱条码", Severity.Warning);
+            return;
+        }
+
+        if (WaLwScannedLines.Count == 0)
+        {
+            SnackbarHelper.Show("请先扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        IsBindingWaLw = true;
+        var outer = WaLwOuterBoxBarcode.Trim();
+        var internalCodes = WaLwScannedLines.Select(x => x.InternalBarcode).ToList();
+        AppendLog($"W*A-LW 保存绑定：外箱 {outer}，共 {internalCodes.Count} 条");
+        try
+        {
+            var (ok, err) = await InvokeIndustrialCodeBindApiAsync("W*A-LW", outer, internalCodes);
+            if (!ok)
+            {
+                AppendLog($"W*A-LW 绑定失败：{err}");
+                SnackbarHelper.Show(err ?? "绑定失败", Severity.Error);
+                return;
+            }
+
+            AppendLog($"W*A-LW 绑定成功：外箱 {outer}，{internalCodes.Count} 条内部条码。已清空列表，可开始下一箱。");
+            SnackbarHelper.Show("保存绑定成功，已清空，可继续扫码", Severity.Success);
+            WaLwScannedLines.Clear();
+            WaLwOuterBoxBarcode = string.Empty;
+            LwInternalBarcode = string.Empty;
+            _waLwInternalBarcodeFieldKey++;
+            _focusWaLwInternalBarcodeAfterRender = true;
+            await PersistIndustryUiAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"W*A-LW 绑定异常：{ex.Message}");
+            SnackbarHelper.Show($"绑定异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsBindingWaLw = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>FA42A：扫内部条码 → 打印铭牌 → 记入待绑定列表；满箱后绑定外箱。</summary>
+    async Task HandleFa42InternalBarcodeScanAsync()
+    {
+        var code = (Fa42InternalBarcode ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            Fa42InternalBarcode = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (NormalizeInternalBarcodePart(code) == null)
+        {
+            SnackbarHelper.Show("内部条码格式无效", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa42Batch))
+        {
+            SnackbarHelper.Show("请填写批次(当月)", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa42CustomerPrefix))
+        {
+            SnackbarHelper.Show("请填写客户前缀", Severity.Warning);
+            return;
+        }
+
+        var duplicateIndex = Fa42ScannedLines.FindIndex(x =>
+            string.Equals(x.InternalBarcode, code, StringComparison.OrdinalIgnoreCase));
+        if (duplicateIndex >= 0)
+        {
+            SnackbarHelper.Show($"条码重码：与序号 {duplicateIndex + 1} 重复", Severity.Warning);
+            AppendLog($"FA42A 重码拦截：{code}，与序号 {duplicateIndex + 1} 重复。");
+            Fa42InternalBarcode = string.Empty;
+            _fa42InternalBarcodeFieldKey++;
+            _focusFa42InternalBarcodeAfterRender = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (Fa42ScannedLines.Count >= Fa42FullBoxCount)
+        {
+            SnackbarHelper.Show($"已达满箱数 {Fa42FullBoxCount}，请先绑定外箱", Severity.Warning);
+            AppendLog($"FA42A 满箱拦截：{code} 未加入列表，请先绑定。");
+            return;
+        }
+
+        Fa42InternalBarcode = code;
+        var printed = await TryPrintFa42NameplateAsync();
+        if (!printed)
+            return;
+
+        Fa42ScannedLines.Add(new Fa42ScannedLine(code, DateTime.Now));
+        var variantTag = SelectedFa42Variant == 0 ? "FA42A-V" : "FA42A-H";
+        AppendLog($"FA42A 已扫入（{variantTag}）：{code}（{Fa42ScannedLines.Count}/{Fa42FullBoxCount}）");
+
+        Fa42InternalBarcode = string.Empty;
+        _fa42InternalBarcodeFieldKey++;
+        _focusFa42InternalBarcodeAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(1);
+        await ScrollScanTableToBottomAsync();
+
+        if (Fa42ScannedLines.Count >= Fa42FullBoxCount)
+        {
+            SnackbarHelper.Show($"已满箱（{Fa42FullBoxCount} 条），请扫描外箱条码并点击「保存绑定」", Severity.Info);
+            AppendLog("FA42A 已满箱，请扫描外箱条码后点击「保存绑定」，绑定成功后将清空列表以便下一箱。");
+        }
+    }
+
+    void RemoveFa42ScannedLine(int index)
+    {
+        if (index < 0 || index >= Fa42ScannedLines.Count)
+            return;
+        var removed = Fa42ScannedLines[index];
+        Fa42ScannedLines.RemoveAt(index);
+        AppendLog($"FA42A 已删除序号 {index + 1}：{removed.InternalBarcode}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    Task BindFa42OuterBoxManualAsync() => TryBindFa42OuterBoxAsync();
+
+    async Task TryBindFa42OuterBoxAsync()
+    {
+        if (IsBindingFa42)
+            return;
+
+        if (Fa42ScannedLines.Count < Fa42FullBoxCount)
+        {
+            SnackbarHelper.Show($"未满箱（{Fa42ScannedLines.Count}/{Fa42FullBoxCount}），请继续扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa42OuterBoxBarcode))
+        {
+            SnackbarHelper.Show("请先扫描或输入外箱条码", Severity.Warning);
+            return;
+        }
+
+        if (Fa42ScannedLines.Count == 0)
+        {
+            SnackbarHelper.Show("请先扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        IsBindingFa42 = true;
+        var outer = Fa42OuterBoxBarcode.Trim();
+        var internalCodes = Fa42ScannedLines.Select(x => x.InternalBarcode).ToList();
+        AppendLog($"FA42A 保存绑定：外箱 {outer}，共 {internalCodes.Count} 条");
+        try
+        {
+            var (ok, err) = await InvokeIndustrialCodeBindApiAsync("FA42A", outer, internalCodes);
+            if (!ok)
+            {
+                AppendLog($"FA42A 绑定失败：{err}");
+                SnackbarHelper.Show(err ?? "绑定失败", Severity.Error);
+                return;
+            }
+
+            AppendLog($"FA42A 绑定成功：外箱 {outer}，{internalCodes.Count} 条内部条码。已清空列表，可开始下一箱。");
+            SnackbarHelper.Show("保存绑定成功，已清空，可继续扫码", Severity.Success);
+            Fa42ScannedLines.Clear();
+            Fa42OuterBoxBarcode = string.Empty;
+            Fa42InternalBarcode = string.Empty;
+            _fa42InternalBarcodeFieldKey++;
+            _focusFa42InternalBarcodeAfterRender = true;
+            await PersistIndustryUiAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"FA42A 绑定异常：{ex.Message}");
+            SnackbarHelper.Show($"绑定异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsBindingFa42 = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>FA17：扫内部条码 → 打印铭牌 → 记入待绑定列表；满箱或手动绑定外箱。</summary>
+    async Task HandleFa17InternalBarcodeScanAsync()
+    {
+        var code = (ContentBarcode ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            ContentBarcode = string.Empty;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (NormalizeProductionOrder9Digits(ProductionOrder) == null)
+        {
+            SnackbarHelper.Show("生产订单号中需包含数字，以组成 Serial 前 9 位", Severity.Warning);
+            return;
+        }
+
+        if (NormalizeInternalBarcodePart(code) == null)
+        {
+            SnackbarHelper.Show("内部条码格式无效", Severity.Warning);
+            return;
+        }
+
+        var serial = BuildSerialNo(ProductionOrder, code);
+        if (string.IsNullOrEmpty(serial))
+        {
+            SnackbarHelper.Show("无法组成 Serial（生产订单 + 内部条码）", Severity.Warning);
+            return;
+        }
+
+        var duplicateIndex = Fa17ScannedLines.FindIndex(x =>
+            string.Equals(x.InternalBarcode, code, StringComparison.OrdinalIgnoreCase));
+        if (duplicateIndex >= 0)
+        {
+            SnackbarHelper.Show($"条码重码：与序号 {duplicateIndex + 1} 重复", Severity.Warning);
+            AppendLog($"FA17 重码拦截：{code}，与序号 {duplicateIndex + 1} 重复。");
+            ContentBarcode = string.Empty;
+            _fa17InternalBarcodeFieldKey++;
+            _focusFa17InternalBarcodeAfterRender = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (Fa17ScannedLines.Count >= Fa17FullBoxCount)
+        {
+            SnackbarHelper.Show($"已达满箱数 {Fa17FullBoxCount}，请先绑定外箱", Severity.Warning);
+            AppendLog($"FA17 满箱拦截：{code} 未加入列表，请先绑定。");
+            return;
+        }
+
+        ContentBarcode = code;
+        var printed = await TryPrintFa17NameplateAsync();
+        if (!printed)
+            return;
+
+        Fa17ScannedLines.Add(new Fa17ScannedLine(code, serial, DateTime.Now));
+        AppendLog($"FA17 已扫入：{code} → {serial}（{Fa17ScannedLines.Count}/{Fa17FullBoxCount}）");
+
+        ContentBarcode = string.Empty;
+        _fa17InternalBarcodeFieldKey++;
+        _focusFa17InternalBarcodeAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(1);
+        await ScrollScanTableToBottomAsync();
+
+        if (Fa17ScannedLines.Count >= Fa17FullBoxCount)
+        {
+            SnackbarHelper.Show($"已满箱（{Fa17FullBoxCount} 条），请扫描外箱条码并点击「保存绑定」", Severity.Info);
+            AppendLog($"FA17 已满箱，请扫描外箱条码后点击「保存绑定」，绑定成功后将清空列表以便下一箱。");
+        }
+    }
+
+    void RemoveFa17ScannedLine(int index)
+    {
+        if (index < 0 || index >= Fa17ScannedLines.Count)
+            return;
+        var removed = Fa17ScannedLines[index];
+        Fa17ScannedLines.RemoveAt(index);
+        AppendLog($"FA17 已删除序号 {index + 1}：{removed.InternalBarcode}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    Task BindFa17OuterBoxManualAsync() => TryBindFa17OuterBoxAsync();
+
+    async Task TryBindFa17OuterBoxAsync()
+    {
+        if (IsBindingFa17)
+            return;
+
+        if (Fa17ScannedLines.Count < Fa17FullBoxCount)
+        {
+            SnackbarHelper.Show($"未满箱（{Fa17ScannedLines.Count}/{Fa17FullBoxCount}），请继续扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa17OuterBoxBarcode))
+        {
+            SnackbarHelper.Show("请先扫描或输入外箱条码", Severity.Warning);
+            return;
+        }
+
+        if (Fa17ScannedLines.Count == 0)
+        {
+            SnackbarHelper.Show("请先扫入内部条码", Severity.Warning);
+            return;
+        }
+
+        IsBindingFa17 = true;
+        var outer = Fa17OuterBoxBarcode.Trim();
+        var internalCodes = Fa17ScannedLines.Select(x => x.InternalBarcode).ToList();
+        AppendLog($"FA17 保存绑定：外箱 {outer}，共 {internalCodes.Count} 条");
+        try
+        {
+            var (ok, err) = await InvokeIndustrialCodeBindApiAsync("FA17", outer, internalCodes);
+            if (!ok)
+            {
+                AppendLog($"FA17 绑定失败：{err}");
+                SnackbarHelper.Show(err ?? "绑定失败", Severity.Error);
+                return;
+            }
+
+            AppendLog($"FA17 绑定成功：外箱 {outer}，{internalCodes.Count} 条内部条码。已清空列表，可开始下一箱。");
+            SnackbarHelper.Show("保存绑定成功，已清空，可继续扫码", Severity.Success);
+            Fa17ScannedLines.Clear();
+            Fa17OuterBoxBarcode = string.Empty;
+            ContentBarcode = string.Empty;
+            _fa17InternalBarcodeFieldKey++;
+            _focusFa17InternalBarcodeAfterRender = true;
+            await PersistIndustryUiAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"FA17 绑定异常：{ex.Message}");
+            SnackbarHelper.Show($"绑定异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsBindingFa17 = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    const string IndustrialCodeBindApiUrl = "http://192.168.3.240:10310/GY_Code/ajaxAddCodeMinimal";
+
+    /// <summary>逐条调用 GY_Code/ajaxAddCodeMinimal，InternalCode + OuterBoxCode；返回 1 为成功。</summary>
+    async Task<(bool ok, string? error)> InvokeIndustrialCodeBindApiAsync(
+        string logTag,
+        string outerBoxBarcode,
+        IReadOnlyList<string> internalCodes)
+    {
+        if (internalCodes.Count == 0)
+            return (false, "没有可绑定的内部条码");
+
+        var client = HttpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(30);
+
+        for (var i = 0; i < internalCodes.Count; i++)
+        {
+            var internalCode = (internalCodes[i] ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(internalCode))
+                return (false, $"第 {i + 1} 条内部条码为空");
+
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["InternalCode"] = internalCode,
+                ["OuterBoxCode"] = outerBoxBarcode,
+            });
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await client.PostAsync(IndustrialCodeBindApiUrl, content);
+            }
+            catch (Exception ex)
+            {
+                return (false, $"第 {i + 1} 条请求异常（{internalCode}）：{ex.Message}");
+            }
+
+            var body = (await response.Content.ReadAsStringAsync()).Trim();
+            if (!response.IsSuccessStatusCode)
+                return (false, $"第 {i + 1} 条 HTTP {(int)response.StatusCode}（{internalCode}）：{body}");
+
+            if (!IsIndustrialCodeBindApiSuccess(body))
+                return (false, $"第 {i + 1} 条绑定失败（{internalCode}）：条码为空或写入异常");
+
+            AppendLog($"{logTag} 绑定 OK [{i + 1}/{internalCodes.Count}]：{internalCode} → {outerBoxBarcode}");
+        }
+
+        return (true, null);
+    }
+
+    static bool IsIndustrialCodeBindApiSuccess(string? body)
+    {
+        var t = body?.Trim();
+        if (string.IsNullOrEmpty(t))
+            return false;
+        if (t == "1")
+            return true;
+        return int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n == 1;
+    }
+
+    async Task PrintSubmitInternalBarcodeAsync()
+    {
+        var prefix = BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix);
+        var pattern = BuildInternalBarcodePrintPattern();
+        if (string.IsNullOrEmpty(prefix) || string.IsNullOrEmpty(pattern))
+        {
+            SnackbarHelper.Show("请先输入条码前缀", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            return;
+        }
+
+        PaperSize = "40*25";
+        var (paperOk, w, h) = TryParsePaper(PaperSize);
+        if (!paperOk || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误", Severity.Error);
+            return;
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = false,
+            Blocks = BuildInternalBarcodeLabel40x25(pattern)
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印内部条码 {prefix}-[{{index:4}}] × {PrintCount} 张（序号 0001～{PrintCount:D4}）：{SelectedPrinter}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+
+            AppendLog($"内部条码打印成功：{prefix}-0001～{prefix}-{PrintCount:D4}");
+            SnackbarHelper.Show($"打印成功：共 {PrintCount} 张（{prefix}-0001～{prefix}-{PrintCount:D4}）", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"内部条码打印异常：{ex.Message}");
+            SnackbarHelper.Show($"打印异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static List<PrintBlock> BuildInternalBarcodeLabel40x25(string barcodePattern) =>
+        new()
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 4f,
+                Y = 4f,
+                Width = 32f,
+                Height = 9f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Barcode = new BarcodeElement
+                {
+                    Value = barcodePattern,
+                    SafeMarginMm = 1f,
+                    Format = "CODE_128",
+                    OffsetXMm = 0f,
+                    ShowTextBelow = false,
+                    DigitFontSizePt = 6f,
+                    DigitBold = false,
+                    DigitOffsetYMm = 0f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 2f,
+                Y = 14.5f,
+                Width = 36f,
+                Height = 5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = barcodePattern,
+                    FontName = "Arial",
+                    FontSize = 12f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 3",
+                X = 0f,
+                Y = 21.5f,
+                Width = 40f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "1    2    3    4    5    6",
+                    FontName = "Arial",
+                    FontSize = 11f,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                },
+            },
+        };
+
+    async Task<bool> TryPrintFa17NameplateAsync()
+    {
+        PaperSize = "55*40";
+        var list = SelectedFa17LabelKind == 0
+            ? Fa17BarCode55x40()
+            : Fa17QrCode55x40();
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return false;
+        }
+
+        var (paperOk, w, h) = TryParsePaper(PaperSize);
+        if (!paperOk || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误（如 100*80）", Severity.Error);
+            return false;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            return false;
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = false,
+            Blocks = list
+        };
+
+        IsPrinting = true;
+        var kindTag = SelectedFa17LabelKind == 0 ? "条形码" : "二维码";
+        AppendLog($"发送打印 FA17（{kindTag} 55*40）：{SelectedPrinter}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+            AppendLog("FA17 铭牌打印提交成功。");
+            SnackbarHelper.Show("铭牌打印提交成功", Severity.Success);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"FA17 打印异常：{ex.Message}");
+            SnackbarHelper.Show($"打印异常：{ex.Message}", Severity.Error);
+            return false;
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    record Fa17ScannedLine(string InternalBarcode, string SerialNo, DateTime ScannedAt);
+
+    record Fa17ScanRow(int Index, string InternalBarcode, DateTime ScannedAt);
+
+    record WaLwScannedLine(string InternalBarcode, DateTime ScannedAt);
+
+    record WaLwScanRow(int Index, string InternalBarcode, DateTime ScannedAt);
+
+    record Fa42ScannedLine(string InternalBarcode, DateTime ScannedAt);
+
+    record Fa42ScanRow(int Index, string InternalBarcode, DateTime ScannedAt);
+
+    async Task<bool> TryPrintFa42NameplateAsync()
+    {
+        if (NormalizeInternalBarcodePart(Fa42InternalBarcode) == null)
+        {
+            SnackbarHelper.Show("请输入内部条码", Severity.Warning);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa42Batch))
+        {
+            SnackbarHelper.Show("请填写批次(当月)", Severity.Warning);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(Fa42CustomerPrefix))
+        {
+            SnackbarHelper.Show("请填写客户前缀", Severity.Warning);
+            return false;
+        }
+
+        PaperSize = "40*25";
+        var list = BuildPrintBlocksFa4240x25();
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return false;
+        }
+
+        var (paperOk, w, h) = TryParsePaper(PaperSize);
+        if (!paperOk || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误", Severity.Error);
+            return false;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            return false;
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = false,
+            Blocks = list
+        };
+
+        IsPrinting = true;
+        var variantTag = SelectedFa42Variant == 0 ? "FA42A-V" : "FA42A-H";
+        AppendLog($"发送打印 FA42A（{variantTag}）：{SelectedPrinter}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+
+            AppendLog("FA42A 铭牌打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"FA42A 打印异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+            return false;
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task<bool> TryPrintWaLwNameplateAsync()
+    {
+        if (NormalizeInternalBarcodePart(LwInternalBarcode) == null)
+        {
+            SnackbarHelper.Show("请输入内部条码", Severity.Warning);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(LwBatch))
+        {
+            SnackbarHelper.Show("请填写批次(当月)", Severity.Warning);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(LwCustomerPrefix))
+        {
+            SnackbarHelper.Show("请填写客户前缀", Severity.Warning);
+            return false;
+        }
+
+        PaperSize = "40*25";
+        var list = BuildPrintBlocksWalw40x25();
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return false;
+        }
+
+        var (paperOk, w, h) = TryParsePaper(PaperSize);
+        if (!paperOk || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误", Severity.Error);
+            return false;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            return false;
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = false,
+            Blocks = list
+        };
+
+        IsPrinting = true;
+        var variantTag = SelectedLwVariant == 0 ? "W1A-LW" : "W8A-LW";
+        AppendLog($"发送打印 W*A-LW（{variantTag}）：{SelectedPrinter}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
+
+            AppendLog("W*A-LW 铭牌打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"W*A-LW 打印异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+            return false;
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>W*A-LW 右侧认证图等：放入 wwwroot/Images/WALw/img1.png、img2.png（无文件则跳过对应 Image 块）。</summary>
+    string WalwImageBase64OrEmpty(string fileName)
+    {
+        var path = Path.Combine(Env.WebRootPath, "Images", "WALw", fileName);
+        return PrinterHelper.ImageFileToBase64(path);
+    }
+
+    static string WalwTextAfterPrefix(string? full, string prefixCn, string prefixAscii)
+    {
+        var s = (full ?? string.Empty).Trim();
+        if (s.Length == 0) return string.Empty;
+        if (s.StartsWith(prefixCn, StringComparison.Ordinal))
+            return s[prefixCn.Length..].Trim();
+        if (s.StartsWith(prefixAscii, StringComparison.Ordinal))
+            return s[prefixAscii.Length..].Trim();
+        return s;
+    }
+
+    string LwPrintNameBody() => WalwTextAfterPrefix(LwName, "名称：", "名称:");
+
+    string LwPrintDrawingBody() => WalwTextAfterPrefix(LwDrawing, "图号：", "图号:");
+
+    List<PrintBlock> BuildPrintBlocksWalw40x25()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "ce.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+        imagePath = Path.Combine(Env.WebRootPath, "Images", "回收箱.png");
+        string img2 = PrinterHelper.ImageFileToBase64(imagePath);
+        var composite = LwCompositeDisplay();
+
+        var list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 2.5f,
+                Y = 5f,
+                Width = 9.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "名称:",
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 1_copy",
+                X = 2.5f,
+                Y = 9f,
+                Width = 10f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "图号：",
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "name",
+                X = 12f,
+                Y = 5f,
+                Width = 18f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = LwPrintNameBody(),
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+        };
+
+        if (LwShowCertificationIcons && !string.IsNullOrEmpty(img))
+        {
+            list.Add(new PrintBlock
+            {
+                Name = "img1",
+                X = 30f,
+                Y = 4f,
+                Width = 4f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    FilePath = "",
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            });
+        }
+
+        if (LwShowCertificationIcons && !string.IsNullOrEmpty(img2))
+        {
+            list.Add(new PrintBlock
+            {
+                Name = "img2",
+                X = 34f,
+                Y = 4f,
+                Width = 4f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img2,
+                    FilePath = "",
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            });
+        }
+
+        list.AddRange(new[]
+        {
+            new PrintBlock
+            {
+                Name = "draw",
+                X = 12f,
+                Y = 9f,
+                Width = 25f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = LwPrintDrawingBody(),
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "qrcode",
+                X = 3f,
+                Y = 13f,
+                Width = 11f,
+                Height = 11f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Qr = new QrElement
+                {
+                    Value = LwQrCodeValue(),
+                    SafeMarginMm = 0.1f,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line1",
+                X = 15f,
+                Y = 13f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = LwSupplierCode ?? "",
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line2",
+                X = 15f,
+                Y = 17f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = composite,
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line3",
+                X = 15f,
+                Y = 21f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = LwSupplierProduct ?? "",
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+        });
+
+        return list;
+    }
+
+    string Fa42PrintNameBody() => WalwTextAfterPrefix(Fa42Name, "名称：", "名称:");
+
+    string Fa42PrintDrawingBody() => WalwTextAfterPrefix(Fa42Drawing, "图号：", "图号:");
+
+    List<PrintBlock> BuildPrintBlocksFa4240x25()
+    {
+        var composite = Fa42CompositeDisplay();
+
+        return new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 2.5f,
+                Y = 5f,
+                Width = 9.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "名称:",
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 1_copy",
+                X = 2.5f,
+                Y = 9f,
+                Width = 10f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "图号：",
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "name",
+                X = 12f,
+                Y = 5f,
+                Width = 26f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = Fa42PrintNameBody(),
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "draw",
+                X = 12f,
+                Y = 9f,
+                Width = 26f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = Fa42PrintDrawingBody(),
+                    FontName = "Arial",
+                    FontSize = 6.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "qrcode",
+                X = 3f,
+                Y = 13f,
+                Width = 11f,
+                Height = 11f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Qr = new QrElement
+                {
+                    Value = Fa42QrCodeValue(),
+                    SafeMarginMm = 0.1f,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line1",
+                X = 15f,
+                Y = 13f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = Fa42SupplierCode ?? "",
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line2",
+                X = 15f,
+                Y = 17f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = composite,
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "line3",
+                X = 15f,
+                Y = 21f,
+                Width = 22f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = Fa42SupplierProduct ?? "",
+                    FontName = "Arial",
+                    FontSize = 7f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+        };
+    }
+
+    (string Pic1, string Pic2, string Pic3, string Pic4) LoadFa17CertImages()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "ce.png");
+        var pic1 = PrinterHelper.ImageFileToBase64(imagePath);
+        imagePath = Path.Combine(Env.WebRootPath, "Images", "3C.jpg");
+        var pic2 = PrinterHelper.ImageFileToBase64(imagePath);
+        imagePath = Path.Combine(Env.WebRootPath, "Images", "IECEx.jpg");
+        var pic3 = PrinterHelper.ImageFileToBase64(imagePath);
+        imagePath = Path.Combine(Env.WebRootPath, "Images", "atex.jpg");
+        var pic4 = PrinterHelper.ImageFileToBase64(imagePath);
+        return (pic1, pic2, pic3, pic4);
+    }
+
+    static void RemoveFa17AddressBlocks(List<PrintBlock> list)
+    {
+        list.RemoveAll(b =>
+            string.Equals(b.Name, "address", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(b.Name, "Block 13", StringComparison.OrdinalIgnoreCase)
+            || (b.Text?.Content?.Equals("Address", StringComparison.OrdinalIgnoreCase) == true)
+            || (b.Text?.Content?.Contains("PROVINCIALHIGHTECHPARK", StringComparison.OrdinalIgnoreCase) == true)
+            || (b.Text?.Content == ":" && b.X > 15f && b.Y >= 32f));
+    }
+
+    static void AppendFa17CertIconBlocks(List<PrintBlock> list, string? pic1, string? pic2, string? pic3, string? pic4)
+    {
+        void Add(string name, float x, string? b64)
+        {
+            if (string.IsNullOrEmpty(b64))
+                return;
+            list.Add(new PrintBlock
+            {
+                Name = name,
+                X = x,
+                Y = 33f,
+                Width = 5f,
+                Height = 5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = b64,
+                    FilePath = "",
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            });
+        }
+
+        Add("img1", 10f, pic1);
+        Add("img2", 20f, pic2);
+        Add("img3", 30f, pic3);
+        Add("img4", 40f, pic4);
+    }
+
+    List<PrintBlock> Fa17BarCode55x40()
+    {
+        var list = BarCode55x40();
+        RemoveFa17AddressBlocks(list);
+        var (pic1, pic2, pic3, pic4) = LoadFa17CertImages();
+        AppendFa17CertIconBlocks(list, pic1, pic2, pic3, pic4);
+        return list;
+    }
+
+    List<PrintBlock> Fa17QrCode55x40()
+    {
+        var list = QrCode55x40();
+        RemoveFa17AddressBlocks(list);
+        var (pic1, pic2, pic3, pic4) = LoadFa17CertImages();
+        AppendFa17CertIconBlocks(list, pic1, pic2, pic3, pic4);
+        return list;
+    }
+
+    List<PrintBlock> BarCode55x40()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+
+        
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 15f,
+                Y = 4f,
+                Width = 25f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 3f,
+                Y = 8f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 3f,
+                Y = 11f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 3f,
+                Y = 14f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 3f,
+                Y = 17f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 3f,
+                Y = 20f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 23f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 26f,
+                Width = 13f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Bar Code",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 30f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 33f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Address",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11",
+                X = 16f,
+                Y = 8f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "barcode",
+                X = 18f,
+                Y = 26f,
+                Width = 32f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Barcode = new BarcodeElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    SafeMarginMm = 0.1f,
+                    Format = "CODE_128",
+                    OffsetXMm = 0f,
+                    ShowTextBelow = false,
+                    DigitFontSizePt = 6f,
+                    DigitBold = false,
+                    DigitOffsetYMm = 0f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "address",
+                X = 18f,
+                Y = 33f,
+                Width = 34f,
+                Height = 5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "PROVINCIALHIGHTECHPARK，XINCHANGCOUNTY,ZHEJIANG, CHINA.",
+                    FontName = "Arial",
+                    FontSize = 4f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "top"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 18f,
+                Y = 30f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ResolvedSerialNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 11f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 14f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 17f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 20f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 23f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 26f,
+                Width = 2f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 30f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 33f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 18f,
+                Y = 8f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateType ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 18f,
+                Y = 11f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateItemNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 18f,
+                Y = 14f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlatePowerRate ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated_load",
+                X = 18f,
+                Y = 17f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateRatedLoad ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 18f,
+                Y = 20f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateDutyCycle ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 18f,
+                Y = 23f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = FormatPlateDate(),
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+
+
+        return list;
+    }
+
+    List<PrintBlock> QrCode55x40()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 15f,
+                Y = 4f,
+                Width = 25f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 3f,
+                Y = 8f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 3f,
+                Y = 11f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 3f,
+                Y = 14f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 3f,
+                Y = 17f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 3f,
+                Y = 20f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 23f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 26f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 32f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Address",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11",
+                X = 16f,
+                Y = 8f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 13",
+                X = 18f,
+                Y = 32f,
+                Width = 34f,
+                Height = 5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "PROVINCIALHIGHTECHPARK，XINCHANGCOUNTY,ZHEJIANG, CHINA.",
+                    FontName = "Arial",
+                    FontSize = 4f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "top"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 18f,
+                Y = 26f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ResolvedSerialNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 11f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 14f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 17f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 20f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 23f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 16f,
+                Y = 26f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 16f,
+                Y = 32f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 18f,
+                Y = 8f,
+                Width = 20f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateType ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 18f,
+                Y = 11f,
+                Width = 20f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateItemNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 18f,
+                Y = 14f,
+                Width = 20f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlatePowerRate ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated_load",
+                X = 18f,
+                Y = 17f,
+                Width = 20f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateRatedLoad ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 18f,
+                Y = 20f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateDutyCycle ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 18f,
+                Y = 23f,
+                Width = 34f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = FormatPlateDate(),
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
+                X = 3f,
+                Y = 29f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "QR   Code",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy_copy",
+                X = 16f,
+                Y = 29f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "qrcode",
+                X = 38f,
+                Y = 8f,
+                Width = 14f,
+                Height = 12f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Qr = new QrElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    SafeMarginMm = 0.2f,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8"
+                },
+            }
+        };
+        return list;
+    }
+
+    List<PrintBlock> BarCode40x25()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 12.5f,
+                Y = 3f,
+                Width = 15f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 1.5f,
+                Y = 6f,
+                Width = 4.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 1.5f,
+                Y = 8.5f,
+                Width = 7f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 1.5f,
+                Y = 11f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 22.5f,
+                Y = 11f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 1.5f,
+                Y = 13.5f,
+                Width = 9f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 20.5f,
+                Y = 8.5f,
+                Width = 4.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 1.5f,
+                Y = 16f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Bar Code  :",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 2f,
+                Y = 21f,
+                Width = 8f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "barcode",
+                X = 11f,
+                Y = 16f,
+                Width = 26f,
+                Height = 4.5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Barcode = new BarcodeElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    SafeMarginMm = 0.1f,
+                    Format = "CODE_128",
+                    OffsetXMm = 0f,
+                    ShowTextBelow = false,
+                    DigitFontSizePt = 6f,
+                    DigitBold = false,
+                    DigitOffsetYMm = 0f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 10f,
+                Y = 21f,
+                Width = 28f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {ResolvedSerialNo ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 6f,
+                Y = 6f,
+                Width = 33f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateType ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 8.5f,
+                Y = 8.5f,
+                Width = 12f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateItemNo ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 11f,
+                Y = 11f,
+                Width = 11.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlatePowerRate ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated.load",
+                X = 32f,
+                Y = 11f,
+                Width = 7f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateRatedLoad ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 10.5f,
+                Y = 13.5f,
+                Width = 28.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateDutyCycle ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 25f,
+                Y = 8.5f,
+                Width = 14f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {FormatPlateDate()}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+        return list;
+    }
+
+    List<PrintBlock> QrCode40x25()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 12.5f,
+                Y = 3f,
+                Width = 15f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 2f,
+                Y = 6.5f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 2f,
+                Y = 9f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 2f,
+                Y = 14f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 2f,
+                Y = 16.5f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 2f,
+                Y = 19f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 2f,
+                Y = 11.5f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 2f,
+                Y = 21.5f,
+                Width = 9.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 11.5f,
+                Y = 21.5f,
+                Width = 26.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {ResolvedSerialNo ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 11.5f,
+                Y = 6.5f,
+                Width = 16f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateType ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 11.5f,
+                Y = 9f,
+                Width = 16f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateItemNo ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 11.5f,
+                Y = 14f,
+                Width = 16f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlatePowerRate ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated_load",
+                X = 11.5f,
+                Y = 16.5f,
+                Width = 16f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateRatedLoad ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 11.5f,
+                Y = 19f,
+                Width = 26.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {PlateDutyCycle ?? ""}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 11.5f,
+                Y = 11.5f,
+                Width = 16f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = $": {FormatPlateDate()}",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "qrcode",
+                X = 27.5f,
+                Y = 7f,
+                Width = 10.5f,
+                Height = 10.5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Qr = new QrElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    SafeMarginMm = 0.2f,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8"
+                },
+            }
+        };
+        return list;
+    }
+
+}
+
+<style>
+    .industry-label-page {
+        min-height: 88vh;
+    }
+
+    .action-btn {
+        min-height: 46px;
+        font-weight: 600;
+    }
+
+    .result-panel {
+        min-height: 280px;
+    }
+
+    .equal-height-panel {
+        width: 100%;
+        height: 100%;
+    }
+
+    .result-list-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+    }
+
+    /* 铭牌预览：两列排列 */
+    .result-list-grid.industry-plate-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .industry-plate-grid .result-list-label {
+        min-width: 88px;
+    }
+
+    .result-list-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        min-height: auto;
+        border-bottom: 1px dashed #e0e0e0;
+        padding-bottom: 6px;
+    }
+
+    .industry-plate-field {
+        align-items: center;
+    }
+
+    .industry-plate-field .plate-inline-input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .plate-serial-readonly input {
+        cursor: default;
+        font-weight: 600;
+    }
+
+    .result-list-label {
+        color: #c62828;
+        min-width: 72px;
+        flex-shrink: 0;
+        font-size: 0.9rem;
+        font-weight: 700;
+        padding-top: 10px;
+    }
+
+    /* 宽时单行排满 4 个；窄时自动折成 2×2（auto-fit + minmax） */
+    .label-kind-radio-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+        gap: 6px 12px;
+        align-items: center;
+        width: 100%;
+    }
+
+    .label-kind-radio-grid .mud-radio {
+        margin: 0;
+    }
+
+    .barcode-entry-field {
+        width: 100%;
+    }
+
+    /* W*A-LW：客户标识只读灰显 */
+    .lw-composite-readonly .mud-input-slot input {
+        color: rgba(0, 0, 0, 0.45) !important;
+        cursor: default;
+        user-select: none;
+    }
+
+    .scan-table-wrap {
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+    }
+
+    /* FA17：已扫表格与消息输出等宽等高 */
+    .fa17-bottom-col {
+        display: flex;
+        min-width: 0;
+    }
+
+    .fa17-bottom-panel {
+        width: 100%;
+        height: 260px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        min-height: 260px;
+        max-height: 260px;
+    }
+
+    .fa17-bottom-panel-title {
+        flex-shrink: 0;
+    }
+
+    .fa17-bottom-panel-body {
+        flex: 1;
+        min-height: 0;
+        height: auto;
+    }
+</style>

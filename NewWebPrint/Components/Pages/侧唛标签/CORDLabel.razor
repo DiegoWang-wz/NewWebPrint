@@ -1,0 +1,1036 @@
+﻿@page "/CORDLabel"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Globalization
+@using System.Runtime.InteropServices.JavaScript
+@using System.Text.Encodings.Web
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using NewWebPrint.Utilities
+@inject IConfiguration Config
+@inject ICordListService CordListService
+@implements IDisposable
+
+<div class="cord-page">
+    <MudGrid Spacing="2" Class="cord-main-grid">
+        <!-- 左侧：CORD信息与称重 -->
+        <MudItem xs="12" md="7" Class="d-flex">
+            <MudPaper Class="section-panel left-panel pa-3">
+                <MudText Typo="Typo.h6" Class="mb-2">CORD 标签信息</MudText>
+
+                <MudGrid Spacing="1">
+                    <!-- 物料选择 + 管理列表 -->
+                    <MudItem xs="12" md="8">
+                        <MudSelect T="CORDInfo"
+                                   Label="物料代码"
+                                   Variant="Variant.Outlined"
+                                   @bind-Value="CurrentCORDInfo"
+                                   FullWidth="true">
+                            @foreach (var item in CORDInfos)
+                            {
+                                <MudSelectItem T="CORDInfo" Value="@item">
+                                    @item.JCPartNumber - @item.LDPartName
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   OnClick="OpenCordListManageDialog"
+                                   Style="height:56px; font-size:1.1rem; font-weight:600;">
+                            管理 CORD 列表
+                        </MudButton>
+                    </MudItem>
+
+                    <!-- LD 单号 + 获取批次 按钮 在一行 -->
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="ldOrder"
+                                      Label="LD单号"
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   OnClick="button_getbatch_Click"
+                                   FullWidth="true"
+                                   Style="height:56px; font-size:1.1rem; font-weight:600;">
+                            获取批次
+                        </MudButton>
+                    </MudItem>
+
+                    <!-- LD Part Number -->
+                    <MudItem xs="12" md="6">
+                        <MudTextField Value="@(CurrentCORDInfo?.LDPartNumber ?? string.Empty)"
+                                      Label="LD物料号"
+                                      Variant="Variant.Outlined"
+                                      ReadOnly="true"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+
+                    <!-- 批次 -->
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="batch"
+                                      Label="批次"
+                                      ReadOnly="true"
+                                      Variant="Variant.Outlined"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+
+                    <!-- 打包日期 -->
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="packingDate"
+                                      Label="打包日期 (yyMMdd)"
+                                      ReadOnly="true"
+                                      Variant="Variant.Outlined"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+
+                    <!-- 数量 -->
+                    <MudItem xs="12" md="6">
+                        <MudTextField Value="@(CurrentCORDInfo?.Quantity.ToString() ?? string.Empty)"
+                                      Label="打包数量"
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"/>
+                    </MudItem>
+
+                    <!-- 标重 / 实际称重 / 开启称重 -->
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="WeightStandard"
+                                      Label="标重 (KG)"
+                                      ReadOnly="true"
+                                      Variant="Variant.Outlined"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="WeightActual"
+                                      Label="实际称重 (KG)"
+                                      ReadOnly="true"
+                                      Variant="Variant.Outlined"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                   OnClick="EnableWeight"
+                                   FullWidth="true"
+                                   Style="height:56px;">
+                            @(_isSerialOpen ? "断开称重器" : "开启称重")
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="WeightToleranceKg"
+                                      Label="公差 (KG)"
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudCheckBox T="bool" @bind-Value="EnableToleranceCheck" Label="启用公差检测"/>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudText Typo="Typo.body2"
+                                 Class="weight-status-text"
+                                 Style="@($"color:{GetWeightStatusColor()}")">
+                            @GetWeightStatusText()
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+
+        <!-- 右侧：日志 + 打印设置 -->
+        <MudItem xs="12" md="5" Class="d-flex">
+            <MudPaper Class="section-panel right-panel pa-3">
+                <div class="log-panel mb-2">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="280" />
+                </div>
+
+                <div class="print-panel">
+                <MudText Typo="Typo.h6" Class="mb-2">打印设置</MudText>
+
+                <MudGrid Spacing="1">
+                    <!-- 打印机选择 -->
+                    <MudItem xs="12">
+                        <PrinterSelector Printers="Printers"
+                                         Label="选择打印机"
+                                         @bind-SelectedPrinter="SelectedPrinter"/>
+                    </MudItem>
+
+                    <!-- 打印数量 + 打印按钮 一行 -->
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="PrintCount"
+                                         Label="打印数量"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="8" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="@(IsWeightOutOfTolerance() ? Color.Error : Color.Success)"
+                                   OnClick="PrintSubmit"
+                                   Disabled="@(IsPrinting || !_isSerialOpen || IsWeightOutOfTolerance())"
+                                   Size="Size.Large"
+                                   FullWidth="true"
+                                   Style="height:56px; font-size:1.1rem; font-weight:600;">
+                            @(IsPrinting ? "打印中..." : "打印")
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<style>
+    .cord-page {
+        padding: 12px;
+    }
+
+    .cord-main-grid {
+        align-items: stretch;
+    }
+
+    .section-panel {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .right-panel .log-panel {
+        flex: 1;
+        min-height: 0;
+    }
+
+    .right-panel .print-panel {
+        flex: 0 0 auto;
+    }
+
+    .readonly-field .mud-input-slot {
+        background: #f7f7f7 !important;
+        border-radius: 4px;
+    }
+
+    .readonly-field .mud-input-outlined-border {
+        border-style: dashed !important;
+    }
+
+    .weight-status-text {
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+    }
+</style>
+
+@code {
+    Storage storage;
+    List<CORDInfo> CORDInfos = new();
+
+    // 用属性 + 私有字段的方式，在 setter 里挂钩选中变化
+    private CORDInfo? _currentCORDInfo;
+
+    CORDInfo? CurrentCORDInfo
+    {
+        get => _currentCORDInfo;
+        set
+        {
+            if (_currentCORDInfo == value) return;
+            _currentCORDInfo = value;
+            OnCordSelected(value);
+        }
+    }
+
+    string ldOrder = "";
+    string batch = "";
+    string packingDate = "";
+    string quantity = "";
+    string weight = "";
+    string WeightStandard { get; set; } = "";
+    string WeightActual { get; set; } = "";
+    string WeightToleranceKg { get; set; } = "1";
+    bool EnableToleranceCheck { get; set; } = true;
+
+
+    bool IsPrinting { get; set; }
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    List<string> Printers { get; set; } = new();
+    string PrintMessages { get; set; } = string.Empty;
+    string PaperSize { get; set; } = "100*80";
+    int PrintCount = 1;
+    private bool _isSerialOpen;
+    private DotNetObjectReference<CORDLabel>? _objRef;
+
+    (bool ok, float w, float h) TryParsePaper(string paper)
+    {
+        try
+        {
+            var parts = (paper ?? "").Split(
+                new char[] { '*', 'x', 'X' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (parts.Length != 2) return (false, 0, 0);
+            return (true, float.Parse(parts[0]), float.Parse(parts[1]));
+        }
+        catch
+        {
+            return (false, 0, 0);
+        }
+    }
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await LoadCordListFromDb();
+
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "CORDLabel_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    protected override void OnInitialized()
+    {
+        packingDate = DateTime.Now.ToString("yyMMdd");
+        _objRef = DotNetObjectReference.Create(this);
+        var conn = Config.GetConnectionString("JClogin_connStr");
+        if (string.IsNullOrWhiteSpace(conn))
+            throw new InvalidOperationException("找不到数据库连接串 JClogin_connStr");
+
+        storage = new Storage(conn);
+    }
+
+    async Task LoadCordListFromDb()
+    {
+        var resp = await CordListService.GetAllAsync();
+        if (resp.Code == ApiResultCode.Success && resp.Data != null)
+        {
+            CORDInfos = resp.Data.Select(CORDInfo.From).ToList();
+            CurrentCORDInfo = CORDInfos.FirstOrDefault();
+        }
+        else if (!string.IsNullOrWhiteSpace(resp.Message))
+            SnackbarHelper.Show(resp.Message, Severity.Warning);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task OpenCordListManageDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true };
+        var dialogRef = await DialogService.ShowAsync<CordListManageDialog>("管理 CORD 列表", options);
+        var result = await dialogRef.Result;
+        if (result != null && !result.Canceled)
+            await LoadCordListFromDb();
+    }
+
+    private void OnCordSelected(CORDInfo? selected)
+    {
+        WeightStandard = selected is null ? "" : selected.PackageWeight.ToString("0.##");
+        if (!_isSerialOpen)
+            WeightActual = "";
+    }
+
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+
+    private void button_getbatch_Click()
+    {
+        try
+        {
+            // 0) 给你一个确认：按钮确实点到了
+            SnackbarHelper.Show("开始获取批次号...", Severity.Info);
+
+            if (CurrentCORDInfo == null)
+            {
+                SnackbarHelper.Show("当前未选择物料代码", Severity.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(ldOrder))
+            {
+                SnackbarHelper.Show("ldOrder 为空，请先输入单号", Severity.Warning);
+                return;
+            }
+
+            string sql = $@"
+SELECT 
+    COALESCE(
+        (SELECT TOP 1 Batch 
+         FROM CORD_BATCH 
+         WHERE MaterialNumber = '{CurrentCORDInfo.JCPartNumber}' AND LDOrder = '{ldOrder}'),
+        (SELECT MAX(Batch) + 1 
+         FROM CORD_BATCH 
+         WHERE MaterialNumber = '{CurrentCORDInfo.JCPartNumber}')
+    ) AS Batch";
+
+            var ds = storage.ExecuteSQLDatable(sql);
+
+            if (ds != null && ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                var res = ds.Tables[0].Rows[0][0]?.ToString();
+                batch = string.IsNullOrEmpty(res) ? "1" : res;
+
+                SnackbarHelper.Show($"获取批次成功：{batch}", Severity.Success);
+            }
+            else
+            {
+                SnackbarHelper.Show("查询成功，但没有查到任何批次记录，已默认设置为 1", Severity.Warning);
+                batch = "1";
+            }
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败: {ex.Message}", Severity.Error);
+        }
+    }
+
+    async Task EnableWeight()
+    {
+        try
+        {
+            if (_isSerialOpen)
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+                _isSerialOpen = false;
+                SnackbarHelper.Show("称重器已停止", Severity.Info);
+                AppendLog("WebSerial 称重连接已关闭");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            var baud = await JS.InvokeAsync<string>("serialInterop.getPreferredScaleBaud");
+            var br = int.TryParse(baud, out var n) ? n : 19200;
+            var config = new
+            {
+                baudRate = baud,
+                parity = "none",
+                dataBits = "8",
+                stopBits = "1",
+                autoScaleBaud = br == 9600 || br == 19200
+            };
+            var success = await JS.InvokeAsync<bool>("serialInterop.openPort", config, _objRef);
+            if (!success)
+            {
+                SnackbarHelper.Show("称重器连接失败或已取消", Severity.Error);
+                AppendLog("WebSerial 称重连接失败或已取消");
+                return;
+            }
+
+            _isSerialOpen = true;
+            SnackbarHelper.Show("称重器连接成功", Severity.Success);
+            AppendLog("WebSerial 称重连接成功");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"称重器连接异常: {ex.Message}", Severity.Error);
+            AppendLog($"称重器连接异常: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReceiveData(string data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+        WeightActual = data.Trim();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnError(string errorMessage)
+    {
+        _isSerialOpen = false;
+        AppendLog($"串口错误: {errorMessage}");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsWeightOutOfTolerance()
+    {
+        if (!EnableToleranceCheck) return false;
+        if (!TryParseDecimal(WeightStandard, out var standard)) return false;
+        if (!TryParseDecimal(WeightActual, out var actual)) return false;
+        if (!TryParseDecimal(WeightToleranceKg, out var tolerance)) tolerance = 1m;
+        if (tolerance < 0) tolerance = Math.Abs(tolerance);
+        return Math.Abs(actual - standard) > tolerance;
+    }
+
+    private static bool TryParseDecimal(string? text, out decimal value)
+    {
+        if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+            return true;
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+    }
+
+    private string GetWeightStatusText()
+    {
+        if (!_isSerialOpen) return "请连接称重器";
+        return IsWeightOutOfTolerance() ? "重量出错：超出公差范围" : "重量正常";
+    }
+
+    private string GetWeightStatusColor()
+    {
+        if (!_isSerialOpen) return "#ef6c00";
+        return IsWeightOutOfTolerance() ? "#c62828" : "#1b5e20";
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (!_isSerialOpen)
+        {
+            SnackbarHelper.Show("请连接称重器", Severity.Warning);
+            AppendLog("打印拦截：请连接称重器");
+            return;
+        }
+
+        if (IsWeightOutOfTolerance())
+        {
+            SnackbarHelper.Show("重量出错：实际称重超出公差范围，禁止打印", Severity.Error);
+            AppendLog("打印拦截：重量超出公差范围");
+            return;
+        }
+
+        List<PrintBlock> list = new List<PrintBlock>();
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(batch))
+        {
+            SnackbarHelper.Show("批次号为空", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ldOrder))
+        {
+            SnackbarHelper.Show("LD单号为空", Severity.Warning);
+            return;
+        }
+
+        var (ok, w, h) = TryParsePaper(PaperSize);
+        if (!ok || w <= 0 || h <= 0)
+        {
+            SnackbarHelper.Show("纸张尺寸格式错误（如 100*80）", Severity.Error);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        var weightForPrint = (WeightActual ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(weightForPrint))
+            weightForPrint = (WeightStandard ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(weightForPrint))
+            weightForPrint = CurrentCORDInfo.PackageWeight.ToString("0.##");
+
+        string qrCodeString =
+            $"LD Order Number: {ldOrder}{Environment.NewLine}LD Part Number: {CurrentCORDInfo.LDPartNumber}{Environment.NewLine}Batch/Lot Number: {batch}{Environment.NewLine}Packing Date: {packingDate}{Environment.NewLine}Quantity: {CurrentCORDInfo.Quantity}";
+        // string qrCodeString =
+        //     $"{ldOrder}%{CurrentCORDInfo.LDPartNumber}%{batch}%{packingDate}%{CurrentCORDInfo.Quantity}";
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = w,
+            PaperHeightMm = h,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            Blocks = new List<PrintBlock>
+            {
+                new PrintBlock
+                {
+                    Name = "Block 1",
+                    X = 3f,
+                    Y = 6f,
+                    Width = 43f,
+                    Height = 43f,
+                    ShowBorder = false,
+                    Qr = new QrElement()
+                    {
+                        Value = qrCodeString
+                    }
+                },
+                new PrintBlock
+                {
+                    Name = "Block 2",
+                    X = 48f,
+                    Y = 6f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "LD Order Number:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3",
+                    X = 48f,
+                    Y = 12f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "LD Part Number:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 4",
+                    X = 48f,
+                    Y = 18f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "JC Part Number:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 5",
+                    X = 48f,
+                    Y = 24f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Revision Number:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 6",
+                    X = 48f,
+                    Y = 30f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Batch/Lot Number:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 7",
+                    X = 48f,
+                    Y = 36f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Packing Date:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 8",
+                    X = 48f,
+                    Y = 42f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Package Quantity:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 9",
+                    X = 48f,
+                    Y = 48f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Package Weight:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 10",
+                    X = 3f,
+                    Y = 52f,
+                    Width = 37f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "LD Description:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "LD Description:",
+                    X = 3f,
+                    Y = 58f,
+                    Width = 94f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.LDPartName,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 12",
+                    X = 3f,
+                    Y = 64f,
+                    Width = 37f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = "Supplier Name:",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Supplier Name:",
+                    X = 3f,
+                    Y = 70f,
+                    Width = 94f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.SupplierName,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "LD Order Number",
+                    X = 77f,
+                    Y = 6f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = ldOrder,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "LD Part Number:",
+                    X = 77f,
+                    Y = 12f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.LDPartNumber,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "JC Part Number:",
+                    X = 77f,
+                    Y = 18f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.JCPartNumber,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Revision Number:",
+                    X = 77f,
+                    Y = 24f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.RevisionNumber,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Batch/Lot Number:",
+                    X = 77f,
+                    Y = 30f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = batch,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Packing Date:",
+                    X = 77f,
+                    Y = 36f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = packingDate,
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Package Quantity:",
+                    X = 77f,
+                    Y = 42f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = Convert.ToString(CurrentCORDInfo.Quantity),
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Package Weight:",
+                    X = 77f,
+                    Y = 48f,
+                    Width = 20f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = weightForPrint + "KG",
+                        FontName = "SimSun",
+                        FontSize = 9f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 22",
+                    X = 0f,
+                    Y = 0f,
+                    Width = 100f,
+                    Height = 80f,
+                    ShowBorder = true,
+                    Text = new TextElement
+                    {
+                        Content = "",
+                        FontName = "Arial",
+                        FontSize = 6f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                }
+            }
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}");
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = null,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "CORDLabel_printer");
+
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    class CORDInfo
+    {
+        public CORDInfo(string jCPartNumber, string supplierName, string lDPartNumber,
+            string lDPartName, string revisionNumber, double packageWeight, int quantity)
+        {
+            JCPartNumber = jCPartNumber;
+            SupplierName = supplierName;
+            LDPartNumber = lDPartNumber;
+            LDPartName = lDPartName;
+            RevisionNumber = revisionNumber;
+            PackageWeight = packageWeight;
+            Quantity = quantity;
+        }
+
+        public static CORDInfo From(CordListDto d)
+        {
+            return new CORDInfo(
+                d.JCPartNumber ?? "",
+                d.SupplierName ?? "",
+                d.LDPartNumber ?? "",
+                d.LDPartName ?? "",
+                d.RevisionNumber ?? "",
+                (double)(d.PackageWeight ?? 0),
+                d.Quantity ?? 0);
+        }
+
+        public string JCPartNumber { get; set; }
+        public string SupplierName { get; set; }
+        public string LDPartNumber { get; set; }
+        public string LDPartName { get; set; }
+        public string RevisionNumber { get; set; }
+        public double PackageWeight { get; set; }
+        public int Quantity { get; set; }
+        public string Unit { get; set; } = "KG";
+    }
+
+    public void Dispose()
+    {
+        _objRef?.Dispose();
+    }
+
+}

@@ -1,0 +1,56 @@
+﻿@using System.Net.Http
+
+@using System.Net.Http.Json
+
+@using Microsoft.AspNetCore.Components.Forms
+
+@using Microsoft.AspNetCore.Components.Routing
+
+@using Microsoft.AspNetCore.Components.Web
+
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+
+@using Microsoft.JSInterop
+
+@using MudBlazor
+
+@using NewWebPrint
+
+@using NewWebPrint.Components
+
+@using NewWebPrint.Components.Tools
+
+@using NewWebPrint.DataDtos
+
+@using NewWebPrint.Models
+
+@using NewWebPrint.Models.Api
+
+@using NewWebPrint.Services
+
+@using NewWebPrint.Services.SapEwm
+
+@using NewWebPrint.Utilities
+
+@using AutoMapper
+
+@using Newtonsoft.Json
+
+@using Microsoft.Extensions.Localization
+
+@inject IWebHostEnvironment Env
+
+@inject NavigationManager NavManager
+
+@inject IDialogService DialogService
+
+@inject IJSRuntime JS
+
+@inject IConfiguration Config
+
+@inject IStringLocalizer<Shared> T
+
+@* 勿在此全局 @inject SnackbarHelper；各页面/布局按需单独 @inject SnackbarHelper SnackbarHelper *@
+

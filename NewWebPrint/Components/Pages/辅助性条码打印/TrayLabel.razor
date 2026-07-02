@@ -1,0 +1,406 @@
+@page "/TrayLabel"
+@rendermode InteractiveServer
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+@inject IJSRuntime JS
+@inject SnackbarHelper SnackbarHelper
+@inject LocalStorageHelper LocalStorage
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+
+<MudGrid Class="pa-20 my-10"
+         GutterSize="1"
+         Justify="Justify.Center"
+         AlignItems="AlignItems.Center"
+         Style="min-height: 80vh;">
+
+    <MudItem xs="12" md="10" lg="8">
+        <MudPaper Elevation="3" Class="pa-6" Style="width:100%;">
+
+            <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true"
+                     @bind-ActivePanelIndex="ActiveTabIndex" PanelClass="pa-0 pt-4">
+
+                <MudTabPanel Text="捷昌立库托盘标签">
+                    <MudItem xs="12">
+                        <MudStack Row="true"
+                                  Spacing="2"
+                                  AlignItems="AlignItems.Center"
+                                  Justify="Justify.Center"
+                                  Class="w-100">
+
+                            <PrinterSelector Printers="Printers" @bind-SelectedPrinter="SelectedPrinter"/>
+
+                            <MudTextField @bind-Value="JcTrayNumber"
+                                          Label="托盘号"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"/>
+
+                            <MudTextField @bind-Value="JcPrintCount"
+                                          Label="打印数量"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Style="max-width:160px;"/>
+
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       OnClick="@PrintSubmitJc"
+                                       Disabled="@IsPrinting"
+                                       Size="Size.Medium"
+                                       Style="height:40px; font-size:1rem; font-weight:600; min-width:130px;">
+                                @(IsPrinting ? "打印中…" : "打印")
+                            </MudButton>
+
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" Class="mt-4">
+                        <OperationLog Content="@JcPrintMessages" Title="输出信息" HeightPx="320"/>
+                    </MudItem>
+                </MudTabPanel>
+
+                <MudTabPanel Text="梅渚立库托盘标签">
+                    <MudItem xs="12">
+                        <MudStack Row="true"
+                                  Spacing="2"
+                                  AlignItems="AlignItems.Center"
+                                  Justify="Justify.Center"
+                                  Class="w-100">
+
+                            <PrinterSelector Printers="Printers" @bind-SelectedPrinter="SelectedPrinter"/>
+
+                            <MudTextField @bind-Value="MzTrayNumber"
+                                          Label="托盘开头"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"/>
+
+                            <MudTextField @bind-Value="MzStartValue"
+                                          Label="序号起点值"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Style="max-width:160px;"/>
+
+                            <MudTextField @bind-Value="MzPrintCount"
+                                          Label="打印数量"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Style="max-width:160px;"/>
+
+                            <MudTextField @bind-Value="MzCopies"
+                                          Label="单份复制数"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Style="max-width:160px;"/>
+
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       OnClick="@PrintSubmitMz"
+                                       Disabled="@IsPrinting"
+                                       Size="Size.Medium"
+                                       Style="height:40px; font-size:1rem; font-weight:600; min-width:130px;">
+                                @(IsPrinting ? "打印中…" : "打印")
+                            </MudButton>
+
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" Class="mt-4">
+                        <OperationLog Content="@MzPrintMessages" Title="输出信息" HeightPx="320"/>
+                    </MudItem>
+                </MudTabPanel>
+
+            </MudTabs>
+
+            @if (IsPrinting)
+            {
+                <MudPaper Outlined Class="pa-3 mt-4">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.body2">@PrintProgressLabel</MudText>
+                        @if (PrintProgressTotal > 0)
+                        {
+                            <MudProgressLinear Value="@PrintProgressValue"
+                                               Color="Color.Primary"
+                                               Rounded
+                                               Size="Size.Medium"/>
+                            <MudText Typo="Typo.caption" Align="Align.End">
+                                @PrintProgressCurrent / @PrintProgressTotal（@PrintProgressPercentText）
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudProgressLinear Indeterminate Color="Color.Primary" Rounded Size="Size.Medium"/>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+
+        </MudPaper>
+    </MudItem>
+
+</MudGrid>
+
+@code {
+    int ActiveTabIndex { get; set; }
+
+    List<string> Printers { get; set; } = new();
+    string? SelectedPrinter { get; set; }
+
+    bool IsPrinting { get; set; }
+    int PrintProgressCurrent { get; set; }
+    int PrintProgressTotal { get; set; }
+    string PrintProgressLabel { get; set; } = string.Empty;
+
+    double PrintProgressValue =>
+        PrintProgressTotal > 0 ? (double)PrintProgressCurrent / PrintProgressTotal * 100d : 0d;
+
+    string PrintProgressPercentText =>
+        PrintProgressTotal > 0 ? $"{PrintProgressValue:F0}%" : string.Empty;
+
+    // 捷昌立库
+    string JcPrintMessages { get; set; } = string.Empty;
+    string JcPaperSize { get; set; } = "55*40";
+    string JcPrintCount { get; set; } = "1";
+    string JcTrayNumber { get; set; } = string.Empty;
+
+    // 梅渚立库
+    string MzPrintMessages { get; set; } = string.Empty;
+    string MzPaperSize { get; set; } = "43*40";
+    string MzPrintCount { get; set; } = "1";
+    string MzCopies { get; set; } = "8";
+    string MzStartValue { get; set; } = "1";
+    string MzTrayNumber { get; set; } = string.Empty;
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "TrayLabel_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void AppendJcLog(string message) =>
+        JcPrintMessages = OperationLogHelper.Append(JcPrintMessages, message);
+
+    void AppendMzLog(string message) =>
+        MzPrintMessages = OperationLogHelper.Append(MzPrintMessages, message);
+
+    async Task BeginPrintingUiAsync()
+    {
+        IsPrinting = true;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = "准备打印…";
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+    }
+
+    async Task EndPrintingUiAsync()
+    {
+        IsPrinting = false;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetPrintProgressAsync(int current, int total, string label)
+    {
+        PrintProgressCurrent = current;
+        PrintProgressTotal = Math.Max(0, total);
+        PrintProgressLabel = label;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task PrintSubmitJc()
+    {
+        if (IsPrinting) return;
+        if (!PrinterHelper.RequireSelectedPrinter(SelectedPrinter, SnackbarHelper)) return;
+
+        var paper = PrinterHelper.ParsePaperSize(JcPaperSize, SnackbarHelper);
+        if (!paper.Success) return;
+
+        if (!PrinterHelper.TryParsePrintCount(JcPrintCount, out var count, SnackbarHelper)) return;
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = paper.WidthMm,
+            PaperHeightMm = paper.HeightMm,
+            Copies = count,
+            StartValue = 1,
+            PrintCount = 1,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            Blocks =
+            [
+                new PrintBlock
+                {
+                    Name = "条形码",
+                    X = 7,
+                    Y = 3,
+                    Width = 41,
+                    Height = 22,
+                    ShowBorder = false,
+                    Barcode = new BarcodeElement { Value = JcTrayNumber, SafeMarginMm = 1f }
+                },
+                new PrintBlock
+                {
+                    Name = "托盘码",
+                    X = 2,
+                    Y = 27,
+                    Width = 50,
+                    Height = 11,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = JcTrayNumber,
+                        FontName = "Arial",
+                        FontSize = 28,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle"
+                    }
+                }
+            ]
+        };
+
+        const int totalSteps = 3;
+        await BeginPrintingUiAsync();
+        try
+        {
+            await SetPrintProgressAsync(1, totalSteps, $"正在提交打印任务（{JcTrayNumber}，共 {count} 份）…");
+            AppendJcLog($"发送打印：{SelectedPrinter}，托盘号 {JcTrayNumber}，份数 {count}");
+
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+
+            await SetPrintProgressAsync(2, totalSteps, "正在保存打印机设置…");
+            await PrinterHelper.SaveLastUsedPrinterAsync(LocalStorage, SelectedPrinter, "TrayLabel_printer");
+
+            AppendJcLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            await SetPrintProgressAsync(totalSteps, totalSteps, "打印任务已提交");
+        }
+        catch (Exception ex)
+        {
+            AppendJcLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            await EndPrintingUiAsync();
+        }
+    }
+
+    PrintLayoutModel BuildMzLayout(float widthMm, float heightMm, int copies, int startValue, int printCount) =>
+        new()
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = widthMm,
+            PaperHeightMm = heightMm,
+            Copies = copies,
+            StartValue = startValue,
+            PrintCount = printCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = true,
+            Blocks =
+            [
+                new PrintBlock
+                {
+                    Name = "Block 1",
+                    X = 6f,
+                    Y = 2f,
+                    Width = 32f,
+                    Height = 28f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Qr = new QrElement
+                    {
+                        Value = MzTrayNumber + "{index:4}",
+                        SafeMarginMm = 1f,
+                        ErrorCorrection = "M",
+                        Charset = "UTF-8"
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "Block 3",
+                    X = 3f,
+                    Y = 32f,
+                    Width = 37f,
+                    Height = 9f,
+                    ShowBorder = false,
+                    BorderStyle = "Solid",
+                    Text = new TextElement
+                    {
+                        Content = MzTrayNumber + "{index:4}",
+                        FontName = "Arial",
+                        FontSize = 22f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle"
+                    },
+                }
+            ]
+        };
+
+    async Task PrintSubmitMz()
+    {
+        if (IsPrinting) return;
+        if (!PrinterHelper.RequireSelectedPrinter(SelectedPrinter, SnackbarHelper)) return;
+
+        var paper = PrinterHelper.ParsePaperSize(MzPaperSize, SnackbarHelper);
+        if (!paper.Success) return;
+
+        if (!PrinterHelper.TryParsePrintCount(MzPrintCount, out var count, SnackbarHelper)) return;
+        if (!int.TryParse(MzCopies, out var copies) || copies < 1)
+        {
+            SnackbarHelper.Show("单份复制数无效", Severity.Warning);
+            return;
+        }
+
+        if (!int.TryParse(MzStartValue, out var startValue) || startValue < 1)
+        {
+            SnackbarHelper.Show("序号起点值无效", Severity.Warning);
+            return;
+        }
+
+        var totalSheets = count * copies;
+        const int totalSteps = 3;
+        await BeginPrintingUiAsync();
+        try
+        {
+            await SetPrintProgressAsync(
+                1,
+                totalSteps,
+                $"正在提交打印任务（序号 {startValue}～{startValue + count - 1}，共 {totalSheets} 张）…");
+            AppendMzLog(
+                $"发送打印：{SelectedPrinter}，托盘开头 {MzTrayNumber}，序号 {startValue}～{startValue + count - 1}，各 {copies} 份，合计 {totalSheets} 张");
+
+            var layout = BuildMzLayout(paper.WidthMm, paper.HeightMm, copies, startValue, count);
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+
+            await SetPrintProgressAsync(2, totalSteps, "正在保存打印机设置…");
+            await PrinterHelper.SaveLastUsedPrinterAsync(LocalStorage, SelectedPrinter, "TrayLabel_printer");
+
+            AppendMzLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            await SetPrintProgressAsync(totalSteps, totalSteps, "打印任务已提交");
+        }
+        catch (Exception ex)
+        {
+            AppendMzLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            await EndPrintingUiAsync();
+        }
+    }
+}

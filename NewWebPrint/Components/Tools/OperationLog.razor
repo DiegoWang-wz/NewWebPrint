@@ -1,0 +1,92 @@
+@inject IJSRuntime JS
+
+@* 修改点 1：使用 ComputedHeight 智能决定最终应用的高度 *@
+<div class="operation-log-panel @Class" style="height: @ComputedHeight;">
+    <MudText Typo="Typo.caption" Class="mb-1 d-flex align-center" Color="Color.Default" Style="flex-shrink: 0;">
+        <MudIcon Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" Class="mr-1"/>
+        @Title
+    </MudText>
+    <div id="@_scrollId" class="operation-log-content">
+        @(string.IsNullOrEmpty(Content) ? " " : Content)
+    </div>
+</div>
+
+<style>
+    .operation-log-panel {
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        background-color: #fafafa;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+    }
+
+    .operation-log-content {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        font-family: monospace;
+        font-size: 12px;
+        background-color: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+</style>
+
+@code {
+
+    /// <summary>日志内容（新消息追加在末尾时，组件会自动滚到底部）</summary>
+    [Parameter]
+    public string Content { get; set; } = "";
+
+    /// <summary>标题，默认「操作日志」</summary>
+    [Parameter]
+    public string Title { get; set; } = "操作日志";
+
+    /// <summary>
+    /// 【向下兼容】保留手动设定像素高度的功能。
+    /// 改为可空类型(int?)：如果老页面传了 HeightPx="300"，则优先使用 300px；没传则为 null。
+    /// </summary>
+    [Parameter]
+    public int? HeightPx { get; set; }
+
+    /// <summary>
+    /// 面板高度（支持所有 CSS 单位，如 100%, 300px, calc(100vh - 50px)）
+    /// 当未指定 HeightPx 时，默认生效此属性。
+    /// </summary>
+    [Parameter]
+    public string Height { get; set; } = "100%";
+
+    /// <summary>可选，根元素追加的 CSS 类（便于父页面媒体查询覆盖高度等）</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string ComputedHeight => HeightPx.HasValue ? $"{HeightPx.Value}px" : Height;
+
+    private string _scrollId = "oplog-" + Guid.NewGuid().ToString("N")[..8];
+    private string _lastContent = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Content != _lastContent)
+        {
+            _lastContent = Content;
+            try
+            {
+                await JS.InvokeVoidAsync("eval", $"var el = document.getElementById('{_scrollId}'); if (el) el.scrollTop = el.scrollHeight;");
+            }
+            catch
+            {
+                /* 忽略 */
+            }
+        }
+    }
+
+}

@@ -1,0 +1,146 @@
+﻿@using NewWebPrint.DataDtos
+@using NewWebPrint.Models.Api
+@using NewWebPrint.Services
+@using MudBlazor
+@inject SnackbarHelper SnackbarHelper
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center justify-space-between w-100">
+            <span>管理 CORD 列表</span>
+            <MudButton Variant="Variant.Text" OnClick="Close">关闭</MudButton>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="@_items" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Striped="true" Style="max-height:400px; overflow:auto;" Class="cord-list-table">
+            <HeaderContent>
+                <MudTh>Id</MudTh>
+                <MudTh>JC Part</MudTh>
+                <MudTh>LD Part</MudTh>
+                <MudTh Style="min-width:180px;">LD Part Name</MudTh>
+                <MudTh>Revision</MudTh>
+                <MudTh>Weight</MudTh>
+                <MudTh>Qty</MudTh>
+                <MudTh Style="width:120px;">操作</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Id">@context.Id</MudTd>
+                <MudTd DataLabel="JC Part">@context.JCPartNumber</MudTd>
+                <MudTd DataLabel="LD Part">@context.LDPartNumber</MudTd>
+                <MudTd DataLabel="LD Part Name" Style="white-space:normal; word-break:break-word; max-width:280px;">@context.LDPartName</MudTd>
+                <MudTd DataLabel="Revision">@context.RevisionNumber</MudTd>
+                <MudTd DataLabel="Weight">@context.PackageWeight</MudTd>
+                <MudTd DataLabel="Qty">@context.Quantity</MudTd>
+                <MudTd DataLabel="操作">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEdit(context))" Title="编辑" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => ConfirmDelete(context))" Title="删除" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAdd">
+            新增
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public MudBlazor.IMudDialogInstance? MudDialog { get; set; }
+
+    [Inject]
+    private ICordListService CordListService { get; set; } = null!;
+
+    private List<CordListDto> _items = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadList();
+    }
+
+    private async Task LoadList()
+    {
+        var resp = await CordListService.GetAllAsync();
+        if (resp.Code == ApiResultCode.Success && resp.Data != null)
+            _items = resp.Data;
+        else
+            SnackbarHelper.Show(resp.Message, Severity.Warning);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenAdd()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Item"] = (CordListDto?)null,
+            ["IsEdit"] = false
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await DialogService.ShowAsync<CordListEditDialog>("新增 CORD", parameters, options);
+        var result = await dialogRef.Result;
+        if (result != null && !result.Canceled && result.Data is CordListDto dto)
+        {
+            var resp = await CordListService.AddAsync(dto);
+            if (resp.Code == ApiResultCode.Success)
+            {
+                SnackbarHelper.Show(resp.Message ?? "已新增", Severity.Success);
+                await LoadList();
+            }
+            else
+                SnackbarHelper.Show(resp.Message ?? "新增失败", Severity.Error);
+        }
+    }
+
+    private async Task OpenEdit(CordListDto item)
+    {
+        var dto = new CordListDto
+        {
+            Id = item.Id,
+            JCPartNumber = item.JCPartNumber,
+            SupplierName = item.SupplierName,
+            LDPartNumber = item.LDPartNumber,
+            LDPartName = item.LDPartName,
+            RevisionNumber = item.RevisionNumber,
+            PackageWeight = item.PackageWeight,
+            Quantity = item.Quantity
+        };
+        var parameters = new DialogParameters
+        {
+            ["Item"] = dto,
+            ["IsEdit"] = true
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await DialogService.ShowAsync<CordListEditDialog>("编辑 CORD", parameters, options);
+        var result = await dialogRef.Result;
+        if (result != null && !result.Canceled && result.Data is CordListDto updated)
+        {
+            var resp = await CordListService.UpdateAsync(updated.Id, updated);
+            if (resp.Code == ApiResultCode.Success)
+            {
+                SnackbarHelper.Show(resp.Message ?? "已保存", Severity.Success);
+                await LoadList();
+            }
+            else
+                SnackbarHelper.Show(resp.Message ?? "保存失败", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDelete(CordListDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync("确认删除", $"确定删除 JC Part [{item.JCPartNumber}] 这条记录吗？", yesText: "删除", cancelText: "取消");
+        if (confirmed == true)
+        {
+            var resp = await CordListService.DeleteAsync(item.Id);
+            if (resp.Code == ApiResultCode.Success)
+            {
+                SnackbarHelper.Show(resp.Message ?? "已删除", Severity.Success);
+                await LoadList();
+            }
+            else
+                SnackbarHelper.Show(resp.Message ?? "删除失败", Severity.Error);
+        }
+    }
+
+    private void Close() => MudDialog?.Close(DialogResult.Ok(true));
+}

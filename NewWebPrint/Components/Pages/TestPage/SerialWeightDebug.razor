@@ -1,0 +1,260 @@
+@page "/serial-weight-debug"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject IJSRuntime JS
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudPaper Elevation="2" Class="pa-5">
+
+        <MudText Typo="Typo.h5" Class="mb-4">串口称重调试</MudText>
+
+        @* 连接区 *@
+        <div class="block mb-5">
+            <MudText Typo="Typo.subtitle1" Class="block-title">连接</MudText>
+
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.End" Class="mb-3">
+                <MudSelect T="string" @bind-Value="BaudPreset" Label="波特率" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="width:150px;">
+                    <MudSelectItem T="string" Value="@("9600")">9600</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("19200")">19200</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("custom")">自定义</MudSelectItem>
+                </MudSelect>
+                @if (BaudPreset == "custom")
+                {
+                    <MudTextField @bind-Value="BaudRateCustom" Label="自定义" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Style="width:100px;"/>
+                }
+                <MudCheckBox @bind-Value="AutoScaleBaud9600_19200"
+                             Disabled='@(BaudPreset == "custom")'
+                             Label="自动9600/19200"
+                             Color="Color.Primary"/>
+                <MudSelect T="string" @bind-Value="Parity" Label="校验" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="width:100px;">
+                    <MudSelectItem T="string" Value="@("none")">NONE</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("even")">EVEN</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("odd")">ODD</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="DataBits" Label="数据位" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Style="width:80px;"/>
+                <MudTextField @bind-Value="StopBits" Label="停止位" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Style="width:80px;"/>
+                <MudButton Variant="Variant.Filled"
+                           Color="@(_isSerialOpen ? Color.Error : Color.Success)"
+                           OnClick="ToggleSerial"
+                           Size="Size.Large"
+                           Style="height:40px; min-width:120px;">
+                    @(_isSerialOpen ? "关闭串口" : "打开串口")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearLogs">
+                    清空
+                </MudButton>
+            </MudStack>
+
+            <MudText Typo="Typo.body2" Class="text-secondary">
+                @BrowserInfo
+                · 状态：<strong>@(_isSerialOpen ? "已连接" : "未连接")</strong>
+                · 接收 @ReceivedCount 次
+                · 最后 @LastReceivedTime
+                @if (GrantedPorts.Count > 0)
+                {
+                    <span> · 端口：@string.Join("、", GrantedPorts)</span>
+                }
+            </MudText>
+        </div>
+
+        <MudDivider Class="mb-5"/>
+
+        @* 数据展示区 *@
+        <div class="block">
+            <MudText Typo="Typo.subtitle1" Class="block-title mb-3">数据</MudText>
+
+            <div class="weight-display mb-4">
+                @(string.IsNullOrWhiteSpace(LastWeightValue) ? "—" : LastWeightValue)
+            </div>
+
+            <OperationLog Content="@LogMessages"
+                          Title="日志"
+                          HeightPx="360"/>
+        </div>
+
+    </MudPaper>
+</MudContainer>
+
+<style>
+    .block-title {
+        font-weight: 600;
+        margin-bottom: 12px;
+    }
+
+    .weight-display {
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 24px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: #fafafa;
+        font-family: monospace;
+        letter-spacing: 0.05em;
+    }
+</style>
+
+@code {
+    private DotNetObjectReference<SerialWeightDebug>? _objRef;
+    private bool _isSerialOpen;
+
+    private string BaudPreset = "19200";
+    private string BaudRateCustom = "";
+
+    private string EffectiveBaud =>
+        BaudPreset == "custom"
+            ? (string.IsNullOrWhiteSpace(BaudRateCustom) ? "19200" : BaudRateCustom.Trim())
+            : BaudPreset;
+
+    private string Parity = "none";
+    private string DataBits = "8";
+    private string StopBits = "1";
+    private bool AutoScaleBaud9600_19200 = true;
+
+    private string BrowserInfo = "";
+    private string LastWeightValue = "";
+    private string LastReceivedTime = "-";
+    private int ReceivedCount;
+    private string LogMessages = "";
+    private List<string> GrantedPorts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        await DetectEnv();
+        await ApplyStoredScaleBaudAsync();
+        await RefreshGrantedPorts();
+    }
+
+    private async Task ApplyStoredScaleBaudAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string>("serialInterop.getPreferredScaleBaud");
+            if (string.IsNullOrWhiteSpace(stored)) return;
+            var s = stored.Trim();
+            if (s == "9600") BaudPreset = "9600";
+            else if (s == "19200") BaudPreset = "19200";
+            else
+            {
+                BaudPreset = "custom";
+                BaudRateCustom = s;
+            }
+        }
+        catch { /* 忽略 */ }
+    }
+
+    private async Task DetectEnv()
+    {
+        try
+        {
+            var supported = await JS.InvokeAsync<bool>("serialInterop.isSerialSupported");
+            var browser = await JS.InvokeAsync<string>("serialInterop.getBrowserName");
+            BrowserInfo = supported
+                ? $"{browser}，支持 Web Serial"
+                : $"{browser}，不支持 Web Serial（请用 Edge/Chrome）";
+            AppendLog(BrowserInfo);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"环境检测失败: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleSerial()
+    {
+        try
+        {
+            if (_isSerialOpen)
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+                _isSerialOpen = false;
+                AppendLog("串口已关闭");
+            }
+            else
+            {
+                var config = new
+                {
+                    baudRate = EffectiveBaud,
+                    parity = Parity,
+                    dataBits = DataBits,
+                    stopBits = StopBits,
+                    autoScaleBaud = AutoScaleBaud9600_19200 && BaudPreset != "custom"
+                };
+                var ok = await JS.InvokeAsync<bool>("serialInterop.openPort", config, _objRef);
+                _isSerialOpen = ok;
+                if (ok) await RefreshGrantedPorts();
+                AppendLog(ok
+                    ? $"串口已打开（{EffectiveBaud}，{Parity}，{DataBits}，{StopBits}）"
+                    : "串口打开失败或被取消");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"串口操作异常: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshGrantedPorts()
+    {
+        try
+        {
+            var ports = await JS.InvokeAsync<List<PortItem>>("serialInterop.getPorts");
+            GrantedPorts = ports?.Select(p => p.name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? new();
+        }
+        catch
+        {
+            GrantedPorts = new();
+        }
+    }
+
+    [JSInvokable]
+    public void ReceiveData(string data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+        LastWeightValue = data.Trim();
+        LastReceivedTime = DateTime.Now.ToString("HH:mm:ss");
+        ReceivedCount++;
+        AppendLog($"[接收] {LastWeightValue}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnError(string errorMessage)
+    {
+        AppendLog($"[错误] {errorMessage}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnScaleBaudProbe(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        AppendLog(message.Trim());
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearLogs()
+    {
+        LogMessages = "";
+        LastWeightValue = "";
+        LastReceivedTime = "-";
+        ReceivedCount = 0;
+    }
+
+    private void AppendLog(string msg) =>
+        LogMessages = OperationLogHelper.Append(LogMessages, msg);
+
+    public void Dispose() => _objRef?.Dispose();
+
+    private sealed class PortItem
+    {
+        public int id { get; set; }
+        public string name { get; set; } = "";
+    }
+}

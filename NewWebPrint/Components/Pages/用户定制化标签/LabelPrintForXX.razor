@@ -1,0 +1,1493 @@
+@page "/LabelPrintForXX"
+@using System.Globalization
+@inject ISapEwmService SapEwmService
+@inject SnackbarHelper SnackbarHelper
+@inject LocalStorageHelper LocalStorage
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject IJSRuntime JS
+@inject IWebHostEnvironment Env
+
+@rendermode InteractiveServer
+
+<MudGrid Class="pa-4 py-3"
+         GutterSize="1"
+         Justify="Justify.Center"
+         AlignItems="AlignItems.Start"
+         Style="min-height: 80vh;">
+    <MudItem xs="12" md="12" lg="11">
+        <MudPaper Elevation="3" Class="pa-4" Style="width:100%;">
+            <MudGrid Spacing="2" Class="mb-2">
+                <MudItem xs="12" md="4">
+                    <KeypadTarget Label="请输入生产订单号"
+                                  @bind-Value="ProductionOrder"/>
+                </MudItem>
+                <MudItem xs="12" md="3" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled"
+                               Size="Size.Large"
+                               OnClick="@SearchSubmit"
+                               Disabled="@IsSearching"
+                               Class="query-btn-large">
+                        @(IsSearching ? "查询中…" : "查询")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (IsSearching)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2"/>
+            }
+            <MudText Typo="Typo.subtitle1" Class="mb-1" Style="font-weight:600;">订单详情</MudText>
+            <div class="order-detail-table-wrap mb-3">
+                <MudTable Items="@(_data is null ? System.Linq.Enumerable.Empty<int>() : new List<int> { 1 })"
+                          T="int"
+                          Hover="true"
+                          Dense="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Class="order-detail-table">
+                    <HeaderContent>
+                        <MudTh Style="min-width:90px;">生产订单</MudTh>
+                        <MudTh Style="min-width:85px;">销售订单</MudTh>
+                        <MudTh Style="min-width:100px;">销售订单行号</MudTh>
+                        <MudTh Style="min-width:90px;">物料代码</MudTh>
+                        <MudTh Class="col-material-name">物料名称</MudTh>
+                        <MudTh Style="min-width:95px;">客户PO号</MudTh>
+                        <MudTh Class="col-spec-model">规格型号</MudTh>
+                        <MudTh Style="min-width:80px;">订单数量</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="生产订单">@_data!.GetString("orderNo")</MudTd>
+                        <MudTd DataLabel="销售订单">@_data.GetString("SalesOrderNo")</MudTd>
+                        <MudTd DataLabel="销售订单行号">@_data.GetString("SalesOrderNolineNO")</MudTd>
+                        <MudTd DataLabel="物料代码">@_data.GetString("materialCode")</MudTd>
+                        <MudTd DataLabel="物料名称" Class="col-material-name">@_data.GetString("materialName")</MudTd>
+                        <MudTd DataLabel="客户PO号">@_data.GetString("ZOGEN")</MudTd>
+                        <MudTd DataLabel="规格型号" Class="col-spec-model">@_data.GetString("materialModel_zh")</MudTd>
+                        <MudTd DataLabel="订单数量">@_data.GetString("orderQuantity")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.body2" Align="Align.Center">无数据</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </div>
+            <div class="selector-section">
+                <div class="selector-left">
+                    <div class="selector-title">标签选择器</div>
+                    <MudRadioGroup T="int"
+                                   Value="SelectedLabelRow"
+                                   ValueChanged="OnSelectedLabelRowChanged"
+                                   Class="selector-radio-group">
+                        <div class="selector-row @(SelectedLabelRow == 1 ? "selector-row-selected" : "")">
+                            <MudRadio Value="@(1)" Color="Color.Primary" Class="selector-radio"/>
+                            <MudSelect T="string" Label="序列号标签" @bind-Value="LabelType" Placeholder="序列号标签"
+                                       Variant="Variant.Outlined"
+                                       Disabled="@(SelectedLabelRow != 1)" Class="selector-select">
+                                <MudSelectItem T="string" Value="@("")"></MudSelectItem>
+                                @foreach (var item in LabelTypeOptions)
+                                {
+                                    <MudSelectItem T="string" Value="@item">@item</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField @bind-Value="SerialPrintStart" Label="打印开始" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 1)" Class="selector-input"/>
+                            <MudTextField @bind-Value="SerialPrintEnd" Label="打印结束" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 1)" Class="selector-input"/>
+                            @* <MudTextField @bind-Value="SerialRepeatCount" Label="重复数量" Variant="Variant.Outlined" *@
+                            @*               Disabled="@(SelectedLabelRow != 1)" Class="selector-input"/> *@
+                        </div>
+                        <div class="selector-row @(SelectedLabelRow == 2 ? "selector-row-selected" : "")">
+                            <MudRadio Value="@(2)" Color="Color.Primary" Class="selector-radio"/>
+                            <MudSelect T="string" Label="固定标签" @bind-Value="LabelSpec" Placeholder="固定标签"
+                                       Variant="Variant.Outlined"
+                                       Disabled="@(SelectedLabelRow != 2)" Class="selector-select">
+                                <MudSelectItem T="string" Value="@("")"></MudSelectItem>
+                                @foreach (var item in LabelSpecOptions)
+                                {
+                                    <MudSelectItem T="string" Value="@item">@item</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField @bind-Value="StablePrintCount" Label="打印数量" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 2)" Class="selector-input"/>
+                        </div>
+                        <div class="selector-row @(SelectedLabelRow == 3 ? "selector-row-selected" : "")">
+                            <MudRadio Value="@(3)" Color="Color.Primary" Class="selector-radio"/>
+                            <MudSelect T="string" Label="外箱标签" @bind-Value="LabelTemplate" Placeholder="外箱标签"
+                                       Variant="Variant.Outlined"
+                                       Disabled="@(SelectedLabelRow != 3)" Class="selector-select">
+                                <MudSelectItem T="string" Value="@("")"></MudSelectItem>
+                                @foreach (var item in LabelTemplateOptions)
+                                {
+                                    <MudSelectItem T="string" Value="@item">@item</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField @bind-Value="BoxPrintStart" Label="打印开始" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 3)" Class="selector-input"/>
+                            <MudTextField @bind-Value="BoxPrintEnd" Label="打印结束" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 3)" Class="selector-input"/>
+                            <MudTextField @bind-Value="BoxPCS" Label="PCS" Variant="Variant.Outlined"
+                                          Disabled="@(SelectedLabelRow != 3)" Class="selector-input"/>
+                            <MudCheckBox T="bool"
+                                         @bind-Value="IsSpecialLogoChecked"
+                                         Label="特殊logo"
+                                         Color="Color.Primary"
+                                         Disabled="@(SelectedLabelRow != 3)"/>
+                        </div>
+                    </MudRadioGroup>
+                </div>
+                <div class="selector-right">
+                    <MudDatePicker Label="日期" Variant="Variant.Outlined" @bind-Date="PrintDate"
+                                   Class="selector-full"/>
+                    <PrinterSelector Printers="Printers"
+                                     @bind-SelectedPrinter="SelectedPrinter"
+                                     Class="selector-full"
+                                     Margin="Margin.None"
+                                     Style="width:100%;"/>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@PrintSubmit"
+                               Disabled="@IsPrinting" FullWidth="true" Size="Size.Large" Class="selector-print-btn">
+                        @(IsPrinting ? "打印中…" : "打印")
+                    </MudButton>
+                </div>
+            </div>
+            <OperationLog Content="@PrintMessages"
+                          Title="在此输出信息"
+                          HeightPx="180"
+                          Class="mt-2"/>
+
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<style>
+    .selector-section {
+        display: grid;
+        grid-template-columns: 6fr 4fr;
+        gap: 16px;
+        margin-bottom: 16px;
+        align-items: start;
+        width: 100%;
+        min-width: 0;
+    }
+
+    @@media (max-width: 960px) {
+        .selector-section {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .selector-left {
+        width: 100%;
+        min-width: 0;
+        padding: 12px 16px 12px 12px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+
+    .selector-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+    }
+
+    .selector-radio-group {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 12px;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+    }
+
+    .selector-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-height: 40px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        margin: 0 -8px;
+        border-radius: 4px;
+    }
+
+    .selector-row-selected {
+        background-color: rgba(0, 0, 0, 0.06);
+    }
+
+    .selector-radio {
+        flex-shrink: 0;
+    }
+
+    .selector-select {
+        flex: 1 1 180px;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .selector-input {
+        flex: 1 1 90px;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .selector-right {
+        padding: 12px 0 12px 16px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .selector-right .selector-full {
+        width: 100%;
+    }
+
+    .selector-print-btn {
+        height: 48px !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+    }
+
+    /* 查询按钮：加宽、放大 */
+    .query-btn-large {
+        min-height: 48px;
+        min-width: 140px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+
+    /* 订单详情表格：长文本列换行、展示全 */
+    .order-detail-table-wrap {
+        overflow-x: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+    }
+
+    .order-detail-table .col-material-name,
+    .order-detail-table .col-spec-model {
+        min-width: 140px;
+        max-width: 320px;
+        white-space: normal !important;
+        word-break: break-word;
+        line-height: 1.35;
+        vertical-align: middle;
+    }
+
+    .order-detail-table td.col-material-name,
+    .order-detail-table td.col-spec-model {
+        white-space: normal !important;
+        word-break: break-word;
+        vertical-align: middle;
+    }
+
+    /* 与其它列一致：整行数据格垂直居中 */
+    .order-detail-table tbody td {
+        vertical-align: middle;
+    }
+
+    .order-detail-table thead th {
+        white-space: nowrap;
+    }
+</style>
+
+@code {
+    const string PrinterStorageKey = "LabelPrintForXX_printer";
+
+    List<string> Printers { get; set; } = new();
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+
+
+    // 中间区域：标签选择器（三个）- serial_label, stable_label, box_label
+    string LabelType { get; set; } = "";
+    string LabelSpec { get; set; } = "";
+    string LabelTemplate { get; set; } = "";
+
+    List<string> LabelTypeOptions { get; set; } = new()
+    {
+        "880533 M120 BLACK",
+        "880534 RISE M089 BLACK",
+        "880535 RISE M089 WHITE",
+        "880160 M001 BLACK",
+        "7301510 RISE A151 PROGRAMING"
+    };
+
+    List<string> LabelSpecOptions { get; set; } = new()
+    {
+        "880150/RISE M050 BACKBONE/50mm BLACK",
+        "880151/RISE M050 BACKBONE/50mm WHITE",
+        "880152/RISE M080 BACKBONE/80mm BLACK",
+        "880153/RISE M080 BACKBONE/80mm WHITE",
+        "880160/RISE M001 VESA STRIPS CLAMPS/",
+        "880533/RISE M120 DIRECT/CONTROL VESA STRIPS BL",
+        "880534/RISE M089 BLACK/",
+        "880535/RISE M089 WHITE/"
+    };
+
+    List<string> LabelTemplateOptions { get; set; } = new()
+    {
+        "RISE 2000/BLACK/7320000/8712285414428",
+        "RISE 2000/WHITE/7320001/8712285414442",
+        "RISE 2008/BLACK/7320080/8712285357305",
+        "RISE 2008/WHITE/7320081/8712285357329",
+        "RISE 5308/BLACK/7353080/8712285358142",
+        "RISE 5300/BLACK/7353000/8712285418488",
+        "RISE 2000/BLACK/7320004/8712285416842",
+        "RISE 2000/WHITE/7320005/8712285416866"
+    };
+
+    DateTime? PrintDate { get; set; } = DateTime.Today;
+
+    int SelectedLabelRow { get; set; } = 1;
+
+    void OnSelectedLabelRowChanged(int value)
+    {
+        SelectedLabelRow = value;
+        InvokeAsync(StateHasChanged);
+    }
+
+    string SerialPrintStart { get; set; } = "";
+    string SerialPrintEnd { get; set; } = "";
+    string SerialRepeatCount { get; set; } = "";
+    string StablePrintCount { get; set; } = "1";
+    string BoxPrintStart { get; set; } = "";
+    string BoxPrintEnd { get; set; } = "";
+    string BoxPCS { get; set; } = "1";
+    bool IsSpecialLogoChecked { get; set; } = true;
+
+    private SapEwmDynamicPayload? _data;
+    string ProductionOrder { get; set; } = "102581769";
+    bool IsSearching { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    async Task SearchSubmit()
+    {
+        if (IsSearching) return;
+        if (string.IsNullOrWhiteSpace(ProductionOrder))
+        {
+            SnackbarHelper.Show("请输入生产单号", Severity.Warning);
+            return;
+        }
+
+        IsSearching = true;
+        _data = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            string langParam = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh" ? "1" : "E";
+
+            var response = await SapEwmService.InvokeDynamicAsync(
+                "GetProductInfo",
+                new Dictionary<string, string?> { ["po"] = ProductionOrder.Trim(), ["lang"] = langParam },
+                logToBrowserConsole: true);
+
+            if (response.Code != ApiResultCode.Success || response.Data is null)
+            {
+                SnackbarHelper.Show(response.Message, Severity.Error);
+                return;
+            }
+
+            _data = response.Data;
+
+            SnackbarHelper.Show("查询成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 17 位条码前 13 位（客户PO后6位 + 销售订单行号3位 + 年周4位），用于配合 LocalAgent 的 {index:4} 占位符
+    /// </summary>
+    string BuildSerialBarcodePrefix(SapEwmDynamicPayload data, DateTime date)
+    {
+        var codevalue = data.GetString("ZOGEN") ?? "";
+        var clientPo = codevalue.Length >= 6 ? codevalue.Substring(codevalue.Length - 6, 6) : codevalue.PadLeft(6, '0');
+
+        int lineno = 0;
+        int.TryParse(data.GetString("SalesOrderNolineNO")?.Trim(), System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out lineno);
+        var salesOrderLineno = lineno.ToString("000", CultureInfo.InvariantCulture);
+
+        int year2 = date.Year % 100;
+        int week = System.Globalization.ISOWeek.GetWeekOfYear(date);
+        var yyww = year2.ToString("00", CultureInfo.InvariantCulture) + week.ToString("00", CultureInfo.InvariantCulture);
+
+        return clientPo + salesOrderLineno + yyww;
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (!PrinterHelper.RequireSelectedPrinter(SelectedPrinter, SnackbarHelper)) return;
+
+        PrintLayoutModel? layout = null;
+        string? startLogMessage = null;
+
+        if (SelectedLabelRow == 1)
+        {
+            if (_data == null)
+            {
+                SnackbarHelper.Show("请先查询生产订单获取订单数据", Severity.Warning);
+                return;
+            }
+
+            if (!PrinterHelper.TryParsePrintRange(SerialPrintStart, SerialPrintEnd, out int start, out int end, SnackbarHelper))
+                return;
+
+            const string paperSize = "94*20";
+            var paper = PrinterHelper.ParsePaperSize(paperSize, SnackbarHelper);
+            if (!paper.Success) return;
+
+            var date = PrintDate ?? DateTime.Today;
+            int repeat = 1;
+            if (!string.IsNullOrWhiteSpace(SerialRepeatCount) && int.TryParse(SerialRepeatCount.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int r) && r > 0)
+                repeat = Math.Min(r, 100);
+
+            int printCount = end - start + 1;
+            string barcodePrefix = BuildSerialBarcodePrefix(_data, date);
+            string barcodePattern = barcodePrefix + "{index:4}";
+            if (LabelType == "7301510 RISE A151 PROGRAMING")
+            {
+                layout = new PrintLayoutModel
+                {
+                    PrinterName = SelectedPrinter,
+                    PaperWidthMm = paper.WidthMm,
+                    PaperHeightMm = paper.HeightMm,
+                    Copies = 1,
+                    StartValue = start,
+                    PrintCount = printCount,
+                    BorderThicknessMm = 0.4f,
+                    Blocks = new List<PrintBlock>
+                    {
+                        new PrintBlock
+                        {
+                            Name = "Block 1",
+                            X = 4f,
+                            Y = 0f,
+                            Width = 44.5f,
+                            Height = 20f,
+                            ShowBorder = false,
+                            Text = new TextElement() { Content = "" }
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 1",
+                            X = 8f,
+                            Y = 4f,
+                            Width = 31f,
+                            Height = 8f,
+                            ShowBorder = false,
+                            Barcode = new BarcodeElement
+                            {
+                                Value = barcodePattern,
+                                SafeMarginMm = 0.1f
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 2",
+                            X = 8f,
+                            Y = 12f,
+                            Width = 31f,
+                            Height = 3f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = barcodePattern,
+                                FontName = "Arial",
+                                FontSize = 6f,
+                                Bold = true,
+                                Align = "center",
+                                VerticalAlign = "middle"
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 3",
+                            X = 8f,
+                            Y = 15f,
+                            Width = 31f,
+                            Height = 4f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = "Vogels Products B.V.Hondsruglaan 93,\n 5628 DB Eindhoven The Netherlands",
+                                FontName = "Arial",
+                                FontSize = 4f,
+                                Bold = true,
+                                Align = "center",
+                                VerticalAlign = "middle"
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 5",
+                            X = 3f,
+                            Y = 2f,
+                            Width = 47f,
+                            Height = 2f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = "Art.nr" + LabelType,
+                                FontName = "Arial",
+                                FontSize = 6f,
+                                Bold = true,
+                                Align = "left",
+                                VerticalAlign = "middle"
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 1",
+                            X = 53f,
+                            Y = 0f,
+                            Width = 44.5f,
+                            Height = 20f,
+                            ShowBorder = false,
+                            Text = new TextElement() { Content = "" }
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 1",
+                            X = 55f,
+                            Y = 4f,
+                            Width = 31f,
+                            Height = 8f,
+                            ShowBorder = false,
+                            Barcode = new BarcodeElement
+                            {
+                                Value = barcodePattern,
+                                SafeMarginMm = 0.1f
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 2",
+                            X = 55f,
+                            Y = 12f,
+                            Width = 31f,
+                            Height = 3f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = barcodePattern,
+                                FontName = "Arial",
+                                FontSize = 6f,
+                                Bold = true,
+                                Align = "center",
+                                VerticalAlign = "middle"
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 3",
+                            X = 55f,
+                            Y = 15f,
+                            Width = 31f,
+                            Height = 4f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = "Vogels Products B.V.Hondsruglaan 93,\n 5628 DB Eindhoven The Netherlands",
+                                FontName = "Arial",
+                                FontSize = 4f,
+                                Bold = true,
+                                Align = "center",
+                                VerticalAlign = "middle"
+                            },
+                        },
+                        new PrintBlock
+                        {
+                            Name = "Block 5",
+                            X = 50f,
+                            Y = 2f,
+                            Width = 47f,
+                            Height = 2f,
+                            ShowBorder = false,
+                            Text = new TextElement
+                            {
+                                Content = "Art.nr" + LabelType,
+                                FontName = "Arial",
+                                FontSize = 6f,
+                                Bold = true,
+                                Align = "left",
+                                VerticalAlign = "middle"
+                            }
+                        }
+                    }
+                };
+            }
+            else
+            {
+                layout = new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = paper.WidthMm,
+                PaperHeightMm = paper.HeightMm,
+                Copies = 1,
+                StartValue = start,
+                PrintCount = printCount,
+                BorderThicknessMm = 0.4f,
+
+
+                Blocks = new List<PrintBlock>
+                {
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 1f,
+                        Y = 0f,
+                        Width = 44.5f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Text = new TextElement() { Content = "" }
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 3f,
+                        Y = 4f,
+                        Width = 31f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Barcode = new BarcodeElement
+                        {
+                            Value = barcodePattern,
+                            SafeMarginMm = 0.1f
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 2",
+                        X = 3f,
+                        Y = 12f,
+                        Width = 31f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = barcodePattern,
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 3",
+                        X = 3f,
+                        Y = 15f,
+                        Width = 31f,
+                        Height = 4f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Vogels Products B.V.Hondsruglaan 93,\n 5628 DB Eindhoven The Netherlands",
+                            FontName = "Arial",
+                            FontSize = 4f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 4f,
+                        Y = 2f,
+                        Width = 40f,
+                        Height = 2f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Art.nr" + LabelType,
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 35f,
+                        Y = 3.5f,
+                        Width = 11f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Max load:",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 6",
+                        X = 35f,
+                        Y = 6f,
+                        Width = 9f,
+                        Height = 9f,
+                        ShowBorder = false,
+                        Qr = new QrElement
+                        {
+                            Value = "https://www.vogels.com/en-gb/c/product-max-weight-load",
+                            SafeMarginMm = 0.1f,
+                            ErrorCorrection = "M",
+                            Charset = "UTF-8"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 7",
+                        X = 35f,
+                        Y = 15f,
+                        Width = 11f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Scan QR",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 48f,
+                        Y = 0f,
+                        Width = 44.5f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Text = new TextElement() { Content = "" }
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 50f,
+                        Y = 4f,
+                        Width = 31f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Barcode = new BarcodeElement
+                        {
+                            Value = barcodePattern,
+                            SafeMarginMm = 0.1f
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 2",
+                        X = 50f,
+                        Y = 12f,
+                        Width = 31f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = barcodePattern,
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 3",
+                        X = 50f,
+                        Y = 15f,
+                        Width = 31f,
+                        Height = 4f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Vogels Products B.V.Hondsruglaan 93,\n 5628 DB Eindhoven The Netherlands",
+                            FontName = "Arial",
+                            FontSize = 4f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 51f,
+                        Y = 2f,
+                        Width = 40f,
+                        Height = 2f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Art.nr" + LabelType,
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 82f,
+                        Y = 3.5f,
+                        Width = 11f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Max load:",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 6",
+                        X = 82f,
+                        Y = 6f,
+                        Width = 9f,
+                        Height = 9f,
+                        ShowBorder = false,
+                        Qr = new QrElement
+                        {
+                            Value = "https://www.vogels.com/en-gb/c/product-max-weight-load",
+                            SafeMarginMm = 0.1f,
+                            ErrorCorrection = "M",
+                            Charset = "UTF-8"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 7",
+                        X = 82f,
+                        Y = 15f,
+                        Width = 11f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Scan QR",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = true,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                }
+            };
+
+            startLogMessage = $"发送打印：{SelectedPrinter}（序列号 {start}～{end}，共 {printCount} 张 × {repeat} 份）";
+            }
+        }
+        else if (SelectedLabelRow == 2)
+        {
+            const string paperSize = "94*20";
+            var paper = PrinterHelper.ParsePaperSize(paperSize, SnackbarHelper);
+            if (!paper.Success) return;
+
+            // 按斜杠拆分固定标签（如 "880150/RISE M050 BACKBONE/50mm BLACK"），二维码为第一段，依次填入下方 TextElement
+            var labelParts = (LabelSpec ?? "")
+                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.Trim())
+                .ToList();
+            var part0 = labelParts.Count > 0 ? labelParts[0] : "";
+            var part1 = labelParts.Count > 1 ? labelParts[1] : "";
+            var part2 = labelParts.Count > 2 ? labelParts[2] : "";
+
+            layout = new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = paper.WidthMm,
+                PaperHeightMm = paper.HeightMm,
+                Copies = 1,
+                StartValue = 1,
+                PrintCount = Convert.ToInt16(StablePrintCount) * 2,
+                GapMm = 2.5f,
+                BorderThicknessMm = 0.4f,
+                OffsetXMm = 2f,
+                OffsetYMm = 2f,
+                Blocks = new List<PrintBlock>
+                {
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 0f,
+                        Y = 0f,
+                        Width = 44.5f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Text = new TextElement()
+                        {
+                            Content = ""
+                        }
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 2f,
+                        Y = 2f,
+                        Width = 41f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Barcode = new BarcodeElement
+                        {
+                            Value = part0,
+                            SafeMarginMm = 1f
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 2",
+                        X = 2f,
+                        Y = 10f,
+                        Width = 41f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part0,
+                            FontName = "Arial",
+                            FontSize = 7f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 3",
+                        X = 2f,
+                        Y = 13f,
+                        Width = 41f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part1,
+                            FontName = "Arial",
+                            FontSize = 7f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 4",
+                        X = 2f,
+                        Y = 16f,
+                        Width = 41f,
+                        Height = 3f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part2,
+                            FontName = "Arial",
+                            FontSize = 7f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                }
+            };
+        }
+        else if (SelectedLabelRow == 3)
+        {
+            if (_data == null)
+            {
+                SnackbarHelper.Show("请先查询生产订单获取订单数据", Severity.Warning);
+                return;
+            }
+
+            if (!PrinterHelper.TryParsePrintRange(BoxPrintStart, BoxPrintEnd, out int boxStart, out int boxEnd, SnackbarHelper))
+                return;
+
+            const string boxPaperSize = "100*150";
+            var boxPaper = PrinterHelper.ParsePaperSize(boxPaperSize, SnackbarHelper);
+            if (!boxPaper.Success) return;
+
+            // 外箱标签用 LabelTemplate 按斜杠拆分（如 "RISE 2000/BLACK/7320000/8712285414428"）
+            var labelParts = (LabelTemplate ?? "")
+                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.Trim())
+                .ToList();
+            var part0 = labelParts.Count > 0 ? labelParts[0] : "";
+            var part1 = labelParts.Count > 1 ? labelParts[1] : "";
+            var part2 = labelParts.Count > 2 ? labelParts[2] : "";
+            var part3 = labelParts.Count > 3 ? labelParts[3] : "";
+            if (labelParts.Count >= 4 && part3.Length != 13)
+            {
+                for (int i = 3; i < labelParts.Count; i++)
+                {
+                    if (labelParts[i].Length == 13)
+                    {
+                        part3 = labelParts[i];
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(part3))
+                part3 = "0000000000000";
+
+            var date = PrintDate ?? DateTime.Today;
+            int boxPcs = 1;
+            if (!string.IsNullOrWhiteSpace(BoxPCS) && int.TryParse(BoxPCS.Trim(), System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out int bc) && bc > 0)
+                boxPcs = Math.Min(bc, 100);
+            string boxBarcodePrefix = BuildSerialBarcodePrefix(_data, date);
+            string boxBarcodePattern = boxBarcodePrefix + "{index:4}";
+
+            var imagePath = Path.Combine(Env.WebRootPath, "Images/XX", "Vogels.png");
+            string img1 = PrinterHelper.ImageFileToBase64(imagePath);
+            var imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
+            if (part0 == "RISE" && labelParts.Count > 1)
+            {
+                var riseModel = labelParts[1];
+                if (riseModel == "2000") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
+                else if (riseModel == "2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
+                else if (riseModel == "5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
+                else if (riseModel == "5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
+            }
+            else if (part0 == "RISE 2000") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
+            else if (part0 == "RISE 2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
+            else if (part0 == "RISE 5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
+            else if (part0 == "RISE 5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
+
+            string img2 = PrinterHelper.ImageFileToBase64(imagePath2);
+            layout = new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = boxPaper.WidthMm,
+                PaperHeightMm = boxPaper.HeightMm,
+                Copies = 1,
+                StartValue = boxStart,
+                PrintCount = boxEnd - boxStart + 1,
+                GapMm = null,
+                BorderThicknessMm = 0.4f,
+
+                Blocks = new List<PrintBlock>
+                {
+                    new PrintBlock
+                    {
+                        Name = "Block 1",
+                        X = 4f,
+                        Y = 6f,
+                        Width = 40f,
+                        Height = 15f,
+                        ShowBorder = false,
+                        Image = new ImageElement
+                        {
+                            Base64 = img1,
+                            Fit = "contain",
+                            Align = "center",
+                            VerticalAlign = "middle",
+                            Opacity = 1f
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 2",
+                        X = 60f,
+                        Y = 5f,
+                        Width = 40f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Vogel's Products B.V.\nHondsruglaan 93\n5628 DB EINDHOVEN\nThe Netherlands",
+                            FontName = "Arial",
+                            FontSize = 10f,
+                            Bold = false,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 3",
+                        X = 10f,
+                        Y = 27f,
+                        Width = 26f,
+                        Height = 34,
+                        ShowBorder = false,
+                        Image = new ImageElement
+                        {
+                            Base64 = img2,
+                            Fit = "contain",
+                            Align = "center",
+                            VerticalAlign = "middle",
+                            Opacity = 1f
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 6",
+                        X = 5f,
+                        Y = 67f,
+                        Width = 90f,
+                        Height = 15f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Recycle packaging\nConsumer products: www.vogels.com/recycle\nProfessional products: www.vogels.com/p/recycling",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = false,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "quantity",
+                        X = 20f,
+                        Y = 79f,
+                        Width = 60f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = $"QUANTITY:  {BoxPCS}  PC",
+                            FontName = "Arial",
+                            FontSize = 18f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 7",
+                        X = 23f,
+                        Y = 85f,
+                        Width = 50f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Barcode = new BarcodeElement
+                        {
+                            Value = part3,
+                            SafeMarginMm = 1f,
+                            Format = "EAN_13",
+                            DigitFontSizePt = 8,
+                            DigitBold = true,
+                            DigitOffsetYMm = -1f
+                        }
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 8",
+                        X = 27f,
+                        Y = 105f,
+                        Width = 46f,
+                        Height = 10f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part0,
+                            FontName = "Arial",
+                            FontSize = 24f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 8",
+                        X = 27f,
+                        Y = 112f,
+                        Width = 46f,
+                        Height = 20f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part1 + "\n" + part2,
+                            FontName = "Arial",
+                            FontSize = 18f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 9",
+                        X = 15f,
+                        Y = 130f,
+                        Width = 70f,
+                        Height = 18f,
+                        ShowBorder = false,
+                        Barcode = new BarcodeElement
+                        {
+                            Value = boxBarcodePattern,
+                            SafeMarginMm = 1f,
+                            Format = "CODE39",
+                            ShowTextBelow = true,
+                            DigitFontSizePt = 10,
+                            DigitBold = false,
+                            DigitOffsetYMm = 1f
+                        }
+                    },
+                    new PrintBlock
+                    {
+                        Name = "Block 11",
+                        X = 0f,
+                        Y = 25f,
+                        Width = 100f,
+                        Height = 79f,
+                        ShowBorder = false,
+                        BorderTopMm = 0.4f,
+                        BorderBottomMm = 0.4f,
+                        Text = new TextElement
+                        {
+                            Content = "",
+                            FontName = "Arial",
+                            FontSize = 6f,
+                            Bold = false,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                }
+            };
+            if (IsSpecialLogoChecked)
+            {
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 4",
+                        X = 55f,
+                        Y = 25f,
+                        Width = 50f,
+                        Height = 10f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part0,
+                            FontName = "Arial",
+                            FontSize = 18f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 4",
+                        X = 55f,
+                        Y = 26f,
+                        Width = 50f,
+                        Height = 24f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part1 + "\n" + part2,
+                            FontName = "Arial",
+                            FontSize = 12f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+
+                var logo1Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo1.png");
+                var logo2Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo2.png");
+                var logo1 = PrinterHelper.ImageFileToBase64(logo1Path);
+                var logo2 = PrinterHelper.ImageFileToBase64(logo2Path);
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "logo",
+                        X = 49f,
+                        Y = 44f,
+                        Width = 48f,
+                        Height = 16f,
+                        ShowBorder = false,
+                        Image = new ImageElement
+                        {
+                            Base64 = logo1,
+                            Fit = "contain",
+                            Align = "center",
+                            VerticalAlign = "middle",
+                            Opacity = 1f
+                        },
+                    }
+                );
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "logo2",
+                        X = 49f,
+                        Y = 61f,
+                        Width = 48f,
+                        Height = 18f,
+                        ShowBorder = false,
+                        Image = new ImageElement
+                        {
+                            Base64 = logo2,
+                            Fit = "contain",
+                            Align = "center",
+                            VerticalAlign = "middle",
+                            Opacity = 1f
+                        },
+                    }
+                );
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 5f,
+                        Y = 62f,
+                        Width = 50f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Designed and Engineered in the" + "\n" + "Netherlands. Made in China",
+                            FontName = "Arial",
+                            FontSize = 8f,
+                            Bold = false,
+                            Align = "left",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+            }
+            else
+            {
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 4",
+                        X = 50f,
+                        Y = 35f,
+                        Width = 50f,
+                        Height = 10f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part0,
+                            FontName = "Arial",
+                            FontSize = 24f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 4",
+                        X = 50f,
+                        Y = 40f,
+                        Width = 50f,
+                        Height = 24f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = part1 + "\n" + part2,
+                            FontName = "Arial",
+                            FontSize = 18f,
+                            Bold = true,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+
+                layout.Blocks.Add(
+                    new PrintBlock
+                    {
+                        Name = "Block 5",
+                        X = 50f,
+                        Y = 57f,
+                        Width = 50f,
+                        Height = 8f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = "Made in PRC/China",
+                            FontName = "Arial",
+                            FontSize = 10f,
+                            Bold = false,
+                            Align = "center",
+                            VerticalAlign = "middle"
+                        },
+                    }
+                );
+            }
+        }
+
+
+        if (layout is null) return;
+
+        var result = await PrinterHelper.SubmitPrintAsync(
+            JS, LocalStorage, layout, PrinterStorageKey, PrintMessages,
+            startLogMessage ?? $"发送打印：{SelectedPrinter}",
+            SnackbarHelper,
+            setBusy: v => IsPrinting = v,
+            notifyStateChanged: () => InvokeAsync(StateHasChanged));
+        PrintMessages = result.LogContent;
+    }
+
+}

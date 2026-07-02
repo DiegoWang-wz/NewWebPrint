@@ -1,0 +1,497 @@
+﻿@page "/MaterialLabel"
+@using System.Data
+@using System.Globalization
+@using NewWebPrint.Models.Api
+@using Newtonsoft.Json.Linq
+@using NewWebPrint.Services.SapEwm
+@using Sap.Data.Hana
+@rendermode InteractiveServer
+@using MudBlazor.Services
+@implements IAsyncDisposable
+@inject SnackbarHelper SnackbarHelper
+
+<MudPaper Class="pa-2 d-flex flex-column flex-grow-1">
+    <MudTabs @ref="tabsRef"
+             @bind-ActivePanelIndex="activeTabIndex"
+             Class="d-flex" Elevation="2" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4" Style="width: 100%">
+        <MudTabPanel Text="生产入库" class="pa-2">
+            <MudGrid Spacing="@DynamicSpacing">
+                <MudItem xs="12" md="8">
+                    <MudStack Spacing="@DynamicSpacing">
+                        <KeypadTarget Label="生产订单号" @bind-Value="ProdOrderNo"
+                                      Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                      Dense="@(DynamicMargin == Margin.Dense)"/>
+                        <KeypadTarget Label="备注" @bind-Value="ProdRemark"
+                                      Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                      Dense="@(DynamicMargin == Margin.Dense)"/>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudStack Row="true" Spacing="@DynamicSpacing" Style="width: 100%; height: 80%;">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont flex-grow-1"
+                                   Style="height: 100%;"
+                                   OnClick="SearchSubmit"
+                                   Disabled="@IsSearching">
+                            @(IsSearching ? "查询中..." : "查询")
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Warning" Class="AutoFont flex-grow-1"
+                                   Style="height: 100%;">
+                            BOM
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Warning" Class="AutoFont flex-grow-1"
+                                   Style="height: 100%;">
+                            报工
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="采购收货" class="pa-2">
+            <MudGrid Spacing="@DynamicSpacing">
+                <MudItem xs="12" md="8">
+                    <MudStack Spacing="@DynamicSpacing">
+                        <MudTextField @bind-Value="PurchOrderNo" Label="采购订单号" Variant="Variant.Outlined"
+                                      Margin="@DynamicMargin"/>
+                        <MudTextField @bind-Value="PurchLineNo" Label="订单行号" Variant="Variant.Outlined"
+                                      Margin="@DynamicMargin"/>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudStack Row="true" Spacing="@DynamicSpacing" Style="width: 100%; height: 80%;">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont flex-grow-1"
+                                   Style="height: 100%;"
+                                   OnClick="SearchSubmit2"
+                                   Disabled="@IsSearching">
+                            @(IsSearching ? "查询中..." : "查询")
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="物料打印" class="pa-2">
+            <MudGrid Spacing="@DynamicSpacing">
+                <MudItem xs="12" md="10">
+                    <MudGrid Justify="Justify.FlexStart" Spacing="@DynamicSpacing">
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintFactory" Label="工厂" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintSalesOrderNo" Label="销售订单号" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintSalesLineNo" Label="销售订单行号" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintRemark" Label="备注" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintMaterialNo" Label="物料号" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintPurchOrderNo" Label="采购订单号" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="PrintPurchLineNo" Label="采购订单行号" Variant="Variant.Outlined"
+                                          Margin="@DynamicMargin"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3" Class="d-flex align-center">
+                            <MudCheckBox @bind-Value="PrintIsStock" Label="库存" Color="Color.Primary"
+                                         Dense="@(DynamicMargin == Margin.Dense)"/>
+                        </MudItem>
+                    </MudGrid>
+                </MudItem>
+                <MudItem xs="12" md="2" Class="d-flex align-center">
+                    <MudStack Row="true" Spacing="@DynamicSpacing" Style="width: 100%; height: 80%;">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont flex-grow-1"
+                                   Style="height: 100%;"
+                                   OnClick="SearchSubmit3"
+                                   Disabled="@IsSearching">
+                            @(IsSearching ? "查询中..." : "查询")
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="销单库存" class="pa-2">
+            <MudGrid Class="d-flex align-center" Spacing="@DynamicSpacing">
+                <MudItem xs="12" md="8">
+                    <KeypadTarget Label="销售订单号" @bind-Value="SalesOrderNo"
+                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                </MudItem>
+
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont" Style="width: 100%;"
+                               OnClick="SearchSubmit4"
+                               Disabled="@IsSearching">
+                        @(IsSearching ? "查询中..." : "查询")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="交货订单" class="pa-2">
+            <MudGrid Class="d-flex align-center" Spacing="@DynamicSpacing">
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="StockDeliveryOrderNo" Label="交货订单号" Variant="Variant.Outlined"
+                                  Margin="@DynamicMargin"/>
+                </MudItem>
+
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont" Style="width: 100%;"
+                               OnClick="SearchSubmit5"
+                               Disabled="@IsSearching">
+                        @(IsSearching ? "查询中..." : "查询")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+    </MudTabs>
+    <MudPaper Class="my-1 d-flex flex-column pa-2" Style="min-height:100px" Elevation="2">
+        @if (IsSearching)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-1"/>
+        }
+        <div class="table-scroll-x flex-grow-1">
+            <MudTable Items="@printModelList"
+                      T="EWMLabelModel"
+                      Hover="true"
+                      FixedHeader="true"
+                      Height="120px"
+                      Breakpoint="Breakpoint.Sm"
+                      LoadingProgressColor="Color.Info"
+                      RowClassFunc="GetTableRowClass"
+                      OnRowClick="OnRowClicked">
+                <HeaderContent>
+                    <MudTh>工厂</MudTh>
+                    <MudTh>车间</MudTh>
+                    <MudTh>订单</MudTh>
+                    <MudTh>订单行</MudTh>
+                    <MudTh>订单交期</MudTh>
+                    <MudTh>物料编码</MudTh>
+                    <MudTh>物料组</MudTh>
+                    <MudTh>物料名称</MudTh>
+                    <MudTh>规格型号</MudTh>
+                    <MudTh>订单数量</MudTh>
+                    <MudTh>未报工数</MudTh>
+                    <MudTh>销售订单号</MudTh>
+                    <MudTh>销售订单行号</MudTh>
+                    @if (activeTabIndex == 4)
+                    {
+                        <MudTh>交货单号</MudTh>
+                        <MudTh>交货行号</MudTh>
+                    }
+                    @if (activeTabIndex == 1)
+                    {
+                        <MudTh>供应商批次</MudTh>
+                    }
+                    <MudTh>库存数量</MudTh>
+                    <MudTh>批次</MudTh>
+                    <MudTh>库位</MudTh>
+                    @if (activeTabIndex == 0)
+                    {
+                        <MudTh>交货日期</MudTh>
+                    }
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="工厂">@context.factory</MudTd>
+                    <MudTd DataLabel="车间">@context.supplier</MudTd>
+                    <MudTd DataLabel="订单">@context.orderNo</MudTd>
+                    <MudTd DataLabel="订单行">@context.orderLineNo</MudTd>
+                    <MudTd DataLabel="订单交期">@context.OrderDelivery</MudTd>
+                    <MudTd DataLabel="物料编码">@context.materialCode</MudTd>
+                    <MudTd DataLabel="物料组">@context.materialGroup</MudTd>
+                    <MudTd DataLabel="物料名称">@context.materialName</MudTd>
+                    <MudTd DataLabel="规格型号">@context.materialModel_zh</MudTd>
+                    <MudTd DataLabel="订单数量">@context.orderQuantity</MudTd>
+                    <MudTd DataLabel="未报工数">
+                        @(Convert.ToDouble(context.orderQuantity) - Convert.ToDouble(context.reportNum))
+                    </MudTd>
+                    <MudTd DataLabel="销售订单号">@context.SalesOrderNo</MudTd>
+                    <MudTd DataLabel="销售订单行号">@context.SalesOrderNolineNO</MudTd>
+                    @if (activeTabIndex == 4)
+                    {
+                        <MudTd DataLabel="交货单号">@context.jclogoType</MudTd>
+                        <MudTd DataLabel="交货行号">@context.jclogoText</MudTd>
+                    }
+                    @if (activeTabIndex == 1)
+                    {
+                        <MudTd DataLabel="供应商批次">@context.ZEIVR</MudTd>
+                    }
+                    <MudTd DataLabel="库存数量">@context.rknum</MudTd>
+                    <MudTd DataLabel="批次">@context.client</MudTd>
+                    <MudTd DataLabel="库位">@context.var2</MudTd>
+                    @if (activeTabIndex == 0)
+                    {
+                        <MudTd DataLabel="交货日期">@context.DGLTP</MudTd>
+                    }
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Typo="Typo.subtitle2" Align="Align.Center" Color="Color.Secondary">
+                        暂无数据
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+    </MudPaper>
+    <MudPaper Class="my-1 d-flex" Elevation="0" Style="background-color: transparent">
+        <MudGrid Spacing="@DynamicSpacing" AlignItems="AlignItems.Stretch">
+            <MudItem xs="12" sm="3" Class="d-flex">
+                <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="280" Class="w-100"/>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="order-xs-first">
+                <MudPaper Style="width: 100%; height: 100%; min-height: 100px;" Elevation="2" Class="pa-2">
+                    <MudGrid Spacing="@DynamicSpacing">
+                        <MudItem sm="9" Class="d-flex flex-column justify-center">
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Style="width: 100%">
+                                    <MudSelect T="string"
+                                               Label="选择打印机"
+                                               @bind-Value="SelectedPrinter"
+                                               @bind-Value:after="SavePrintSettingsAsync"
+                                               Variant="Variant.Outlined"
+                                               Margin="Margin.Dense"
+                                               Adornment="Adornment.Start"
+                                               AdornmentIcon="@Icons.Material.Filled.Print"
+                                               Class="flex-grow-1">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                               OnClick="Generate"
+                                               Disabled="@IsGenerating">
+                                        @(IsGenerating ? "生成中..." : "预览二维码")
+                                    </MudButton>
+                                </MudStack>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                                    <MudRadioGroup T="string" @bind-Value="PaperSize" @bind-Value:after="OnPaperSizeChangedAsync">
+                                        <MudRadio Value="@("60*40")" Color="Color.Primary">60*40</MudRadio>
+                                        <MudRadio Value="@("80*60")" Color="Color.Primary">80*60</MudRadio>
+                                        <MudRadio Value="@("100*80")" Color="Color.Primary">100*80</MudRadio>
+                                        <MudRadio Value="@("100*120")" Color="Color.Primary">100*120</MudRadio>
+                                    </MudRadioGroup>
+                                    <MudCheckBox @bind-Value="PrintIsMalaysia"
+                                                 @bind-Value:after="OnPrintIsMalaysiaChangedAsync"
+                                                 Label="Only MAS" Color="Color.Secondary"
+                                                 Dense="true"/>
+                                    <MudCheckBox @bind-Value="PrintIsMalaysia2"
+                                                 @bind-Value:after="OnPrintIsMalaysia2ChangedAsync"
+                                                 Label="Only MAS2" Color="Color.Secondary"
+                                                 Dense="true"/>
+                                </MudStack>
+
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem sm="3" Class="d-flex justify-end align-center">
+                            @if (string.IsNullOrEmpty(QrImage))
+                            {
+                                <div
+                                    style="width: 100px; height: 100px; border: 1px dashed #bdbdbd; display: flex; align-items: center; justify-content: center; color: #9e9e9e; border-radius: 4px;">
+                                    二维码
+                                </div>
+                            }
+                            else
+                            {
+                                <MudImage Src="@QrImage"
+                                          Alt="QrCode"
+                                          Class="rounded"
+                                          Style="max-width: 100px; max-height: 100px;"
+                                          Elevation="2"/>
+                            }
+                        </MudItem>
+                        <MudItem sm="12">
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexStart">
+                                    <MudRadioGroup T="string" @bind-Value="SpecialPrint" @bind-Value:after="SavePrintSettingsAsync">
+                                        <MudRadio Value="@("无")" Color="Color.Secondary">无</MudRadio>
+                                        <MudRadio Value="@("双语打印")" Color="Color.Secondary">双语打印</MudRadio>
+                                        @if (activeTabIndex == 0)
+                                        {
+                                            <MudRadio Value="@("马来专属")" Color="Color.Secondary">马来专属</MudRadio>
+                                            <MudRadio Value="@("电子料纸箱")" Color="Color.Secondary">电子料纸箱</MudRadio>
+                                        }
+                                        
+
+                                    </MudRadioGroup>
+                                </MudStack>
+                                <MudGrid >
+                                    <MudItem xs="12" sm="9" Class="d-flex justify-start">
+                                        <MudCheckBox @bind-Value="if_rotate" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="旋转90°"/>
+                                        <MudCheckBox @bind-Value="if_qualify" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="默认合格"/>
+                                        <MudCheckBox @bind-Value="if_remark" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="备注数量"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="3">
+                                        <KeypadTarget @bind-Value="PO_NO" Label="自定义批次号"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"/>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem sm="12">
+                            <MudGrid Spacing="@DynamicSpacing">
+                                <MudItem xs="6" sm="3">
+                                    <KeypadTarget @bind-Value="BoxNum" Label="箱数"
+                                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <KeypadTarget @bind-Value="SumNum" Label="合计"
+                                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <KeypadTarget @bind-Value="PrintCount" Label="打印数量"
+                                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="3" Class="d-flex align-center">
+                                    <MudButton Variant="Variant.Filled" Class="AutoFont"
+                                               Style="background-color: yellowgreen; color: white;"
+                                               FullWidth="true"
+                                               OnClick="PrintSubmit"
+                                               Disabled="@IsPrinting">
+                                        @(IsPrinting ? "打印中..." : "打印")
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudItem>
+                    </MudGrid>
+                   
+                    <MudHidden Breakpoint="Breakpoint.Xs">
+                        <MudDivider DividerType="DividerType.FullWidth" Class="my-3"/>
+                        <MudGrid Spacing="@DynamicSpacing">
+                            <MudItem xs="6" sm="3">
+                                <KeypadTarget @bind-Value="UserId" Label="工号" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true"/>
+                            </MudItem>
+                            <MudItem xs="6" sm="3" Class="d-flex align-center">
+                                <MudButton FullWidth="true"
+                                           Variant="Variant.Filled"
+                                           Color="@(_isSerialOpen ? Color.Warning : Color.Tertiary)"
+                                           Disabled="@(!_isSerialOpen && !CanUseWeightControls)"
+                                           OnClick="EnableWeight">
+                                    @(_isSerialOpen ? "断开" : "连接")
+                                </MudButton>
+                            </MudItem>
+                            <MudItem xs="4" sm="2">
+                                <KeypadTarget @bind-Value="WeightStandard"
+                                              @bind-Value:after="SaveWeightSettingsAsync"
+                                              Label="标重" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true"
+                                              Disabled="@(!CanUseWeightControls)"/>
+                            </MudItem>
+                            <MudItem xs="4" sm="2">
+                                <KeypadTarget @bind-Value="WeightMeasured" Label="称重" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true" Disabled="true"/>
+                            </MudItem>
+                            <MudItem xs="4" sm="2">
+                                <KeypadTarget @bind-Value="WeightTolerance"
+                                              @bind-Value:after="SaveWeightSettingsAsync"
+                                              Label="公差" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true"
+                                              Disabled="@(!CanUseWeightControls)"/>
+                            </MudItem>
+                        </MudGrid>
+                    </MudHidden>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="3" Class="d-none d-sm-flex num-keypad-item">
+                <MudPaper Elevation="2" Class="pa-2 num-keypad-panel d-flex flex-column">
+                    <div class="num-keypad-host">
+                        <NumKeyboard FillContainer="true"/>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+        </MudGrid>
+    </MudPaper>
+</MudPaper>
+
+<style>
+    .AutoFont {
+        font-size: clamp(1rem, 2vw + 0.5rem, 1.5rem) !important;
+        font-weight: bold !important;
+    }
+
+    @@media (max-width: 599px) {
+        .order-xs-first {
+            order: -1 !important;
+        }
+    }
+
+    .table-scroll-x {
+        overflow-x: auto;
+        width: 100%;
+    }
+
+    .table-scroll-x .mud-table {
+        width: max-content;
+        min-width: 100%;
+    }
+
+    .table-scroll-x .mud-table thead th {
+        white-space: nowrap;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        font-weight: 600;
+    }
+
+    .table-scroll-x .mud-table tbody td {
+        white-space: normal;
+        word-break: break-all;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .table-scroll-x .mud-table tbody tr {
+        cursor: pointer;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row {
+        background-color: #d9d9d9 !important;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row:hover {
+        background-color: #cfcfcf !important;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row td {
+        color: rgba(0, 0, 0, 0.87);
+    }
+
+    .num-keypad-item {
+        min-height: 260px;
+    }
+
+    .num-keypad-panel {
+        width: 100%;
+        height: 100%;
+        min-height: 200px;
+    }
+
+    .num-keypad-host {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 0;
+        display: flex;
+    }
+</style>
+

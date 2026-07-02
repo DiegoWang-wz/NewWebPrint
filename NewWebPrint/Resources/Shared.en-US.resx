@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+    <resheader name="version"><value>2.0</value></resheader>
+    <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+    <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="SwitchLanguage" xml:space="preserve">
+    <value>Switch Language</value>
+  </data>
+  <data name="ProductLabel" xml:space="preserve">
+    <value>Product Label</value>
+  </data>
+  <data name="PurchaseLabel" xml:space="preserve">
+    <value>Purchase Label</value>
+  </data>
+  <data name="MaterialLabel" xml:space="preserve">
+    <value>Material Label</value>
+  </data>
+  <data name="DeliveryOrder" xml:space="preserve">
+    <value>Delivery Order</value>
+  </data>
+  <data name="SaleOrder" xml:space="preserve">
+    <value>Sale Order</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="Print" xml:space="preserve">
+    <value>Print</value>
+  </data>
+  <data name="Searching" xml:space="preserve">
+    <value>Searching...</value>
+  </data>
+  <data name="Printing" xml:space="preserve">
+    <value>Printing...</value>
+  </data>
+  <data name="Generating" xml:space="preserve">
+    <value>Generating...</value>
+  </data>
+  <data name="PreviewQrCode" xml:space="preserve">
+    <value>Preview Qr Code</value>
+  </data>
+  <data name="SelectPrinter" xml:space="preserve">
+    <value>Select Printer</value>
+  </data>
+  <data name="ProductionOrder" xml:space="preserve">
+    <value>Production Order</value>
+  </data>
+  <data name="PleaseInput" xml:space="preserve">
+    <value>Please Input</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Remark" xml:space="preserve">
+    <value>Remark</value>
+  </data>
+  <data name="ReportWork" xml:space="preserve">
+    <value>Report Back</value>
+  </data>
+  <data name="Factory" xml:space="preserve">
+    <value>Factory</value>
+  </data>
+  <data name="Workshop" xml:space="preserve">
+    <value>Workshop</value>
+  </data>
+  <data name="CHARG" xml:space="preserve">
+    <value>CHARG</value>
+  </data>
+  <data name="DeliverylineNo" xml:space="preserve">
+    <value>DeliveryLineNo</value>
+  </data>
+  <data name="DeliveryNo" xml:space="preserve">
+    <value>DeliveryNo</value>
+  </data>
+  <data name="DGLTP" xml:space="preserve">
+    <value>OrderDeliveryDate</value>
+  </data>
+  <data name="LABST" xml:space="preserve">
+    <value>LABST</value>
+  </data>
+  <data name="LGORT" xml:space="preserve">
+    <value>LGORT</value>
+  </data>
+  <data name="MaterialCode" xml:space="preserve">
+    <value>MaterialCode</value>
+  </data>
+  <data name="MaterialGroup" xml:space="preserve">
+    <value>MaterialGroup</value>
+  </data>
+  <data name="MaterialModel" xml:space="preserve">
+    <value>MaterialModel</value>
+  </data>
+  <data name="MaterialName" xml:space="preserve">
+    <value>MaterialName</value>
+  </data>
+  <data name="Order" xml:space="preserve">
+    <value>Order</value>
+  </data>
+  <data name="OrderDelivery" xml:space="preserve">
+    <value>OrderDelivery</value>
+  </data>
+  <data name="OrderLine" xml:space="preserve">
+    <value>OrderLine</value>
+  </data>
+  <data name="OrderQuantity" xml:space="preserve">
+    <value>OrderQuantity</value>
+  </data>
+  <data name="SalesLineNo" xml:space="preserve">
+    <value>SalesLineNo</value>
+  </data>
+  <data name="SalesNo" xml:space="preserve">
+    <value>SalesNo</value>
+  </data>
+  <data name="unReportNum" xml:space="preserve">
+    <value>Outstanding amount</value>
+  </data>
+  <data name="ZEIVR" xml:space="preserve">
+    <value>ZEIVR</value>
+  </data>
+  <data name="NonData" xml:space="preserve">
+    <value>Non Data</value>
+  </data>
+  <data name="InHereOutPutMsg" xml:space="preserve">
+    <value>In Here Output Message</value>
+  </data>
+  <data name="Number" xml:space="preserve">
+    <value>Number</value>
+  </data>
+  <data name="TwoLanguagePrint" xml:space="preserve">
+    <value>Two Language Print</value>
+  </data>
+  <data name="Rotate90" xml:space="preserve">
+    <value>Rotate 90°</value>
+  </data>
+  <data name="RemarkOrderNum" xml:space="preserve">
+    <value>Remark Order Num</value>
+  </data>
+  <data name="Weighing" xml:space="preserve">
+    <value>Weighing</value>
+  </data>
+  <data name="MarkedWeight" xml:space="preserve">
+    <value>Marked Weight</value>
+  </data>
+  <data name="Tolerance" xml:space="preserve">
+    <value>Tolerance</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Setting" xml:space="preserve">
+    <value>Setting</value>
+  </data>
+  <data name="Special" xml:space="preserve">
+    <value>Special</value>
+  </data>
+  <data name="QrCode" xml:space="preserve">
+    <value>QrCode</value>
+  </data>
+  <data name="Sum" xml:space="preserve">
+    <value>Sum</value>
+  </data>
+  <data name="BoxNum" xml:space="preserve">
+    <value>BoxNum</value>
+  </data>
+  <data name="Default" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="Qualified" xml:space="preserve">
+    <value>Qualified</value>
+  </data>
+  <data name="Non" xml:space="preserve">
+    <value>Non</value>
+  </data>
+  <data name="PurchaseLineNo" xml:space="preserve">
+    <value>PurchaseLineNo</value>
+  </data>
+  <data name="PurchaseNo" xml:space="preserve">
+    <value>PurchaseNo</value>
+  </data>
+  <data name="MaterialNo" xml:space="preserve">
+    <value>MaterialNo</value>
+  </data>
+  <data name="Inventory" xml:space="preserve">
+    <value>Inventory</value>
+  </data>
+  <data name="MysExclusive" xml:space="preserve">
+    <value>MysExclusive</value>
+  </data>
+  <data name="MysExclusive2" xml:space="preserve">
+    <value>MysExclusive2</value>
+  </data>
+  <data name="CustomBatchNo" xml:space="preserve">
+    <value>CustomBatchNo</value>
+  </data>
+  <data name="UserId" xml:space="preserve">
+    <value>UserId</value>
+  </data>
+  <data name="Supplier" xml:space="preserve">
+    <value>Supplier</value>
+  </data>
+  <data name="Order&amp;Row" xml:space="preserve">
+    <value>Order&amp;Row</value>
+  </data>
+  <data name="SaleNo&amp;Row" xml:space="preserve">
+    <value>SaleNo&amp;Row</value>
+  </data>
+  <data name="Material" xml:space="preserve">
+    <value>Material</value>
+  </data>
+  <data name="MaterialDes." xml:space="preserve">
+    <value>Material Des.</value>
+  </data>
+  <data name="Model" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="Quantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="TotalQuantity" xml:space="preserve">
+    <value>TotalQuantity</value>
+  </data>
+  <data name="UnQualified" xml:space="preserve">
+    <value>UnQualified</value>
+  </data>
+  <data name="SpecialMa" xml:space="preserve">
+    <value>Special</value>
+  </data>
+  <data name="HskOrderDetailTitle" xml:space="preserve">
+    <value>Order details</value>
+  </data>
+  <data name="HskOrderDetail_ColOrderNo" xml:space="preserve">
+    <value>Production order</value>
+  </data>
+  <data name="HskOrderDetail_ColSalesOrder" xml:space="preserve">
+    <value>Sales order</value>
+  </data>
+  <data name="HskOrderDetail_ColMaterialCode" xml:space="preserve">
+    <value>Material code</value>
+  </data>
+  <data name="HskOrderDetail_ColMaterialName" xml:space="preserve">
+    <value>Material name</value>
+  </data>
+  <data name="HskOrderDetail_ColSpec" xml:space="preserve">
+    <value>Specification / model</value>
+  </data>
+  <data name="HskOrderDetail_ColOrderQty" xml:space="preserve">
+    <value>Order quantity</value>
+  </data>
+  <data name="HskOrderDetail_NoData" xml:space="preserve">
+    <value>No data</value>
+  </data>
+  <data name="HskPrintLogNotSent" xml:space="preserve">
+    <value>Print not sent: print layout is not wired yet.</value>
+  </data>
+  <data name="HskPrintLayoutNotReady" xml:space="preserve">
+    <value>Print layout is not wired yet. Configure the new layout and try again.</value>
+  </data>
+  <data name="DateLabel" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="HskPaperSpecLabel" xml:space="preserve">
+    <value>Label size</value>
+  </data>
+</root>

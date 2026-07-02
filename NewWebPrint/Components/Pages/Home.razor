@@ -1,0 +1,234 @@
+﻿@page "/"
+@inject NavigationManager NavManager
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="section-page mt-8 px-10">
+    @if (isLoading)
+    {
+        <MudPaper Class="pa-6 text-center d-flex align-center justify-center">
+            <MudProgressCircular Color="Color.Primary" Class="mr-3"/>
+            <MudText>加载中...</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #594AE2;">一、物料标签</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #594AE2;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #4CAF50;">二、侧唛标签</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #4CAF50;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations2)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #3399FF;">三、铭牌标签</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #3399FF;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations3)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Info"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #FF9800;">四、用户定制化标签</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #FF9800;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations4)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Warning"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #009688;">五、辅助性条码打印</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #009688;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations5)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Secondary"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+
+        <div class="section-container mb-8">
+            <div class="d-flex align-center section-title-row mb-5">
+                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #607D8B;">六、HU项目打印</MudText>
+                <div class="custom-divider ml-4 flex-grow-1" style="background-color: #607D8B;"></div>
+            </div>
+            <MudGrid Spacing="4">
+                @foreach (var op in operations6)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Default"
+                                   FullWidth="true"
+                                   Class="standard-large-button"
+                                   OnClick="@(() => NavigateToOperation(op.Route))">
+                            @op.Name
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        </div>
+    }
+</MudContainer>
+
+<style>
+    .section-page.px-10 {
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    .standard-large-button {
+        height: 64px !important;
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        border-radius: 10px !important;
+        text-transform: none !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+        transition: all 0.3s ease;
+        white-space: pre-line;
+        line-height: 1.2;
+    }
+    .standard-large-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.12) !important;
+        filter: brightness(1.05);
+    }
+    .custom-divider {
+        height: 2px;
+        opacity: 0.2;
+        border-radius: 2px;
+    }
+
+    @@media (max-width: 960px) {
+        .section-page.px-10 {
+            padding-left: 1.25rem !important;
+            padding-right: 1.25rem !important;
+        }
+        .standard-large-button {
+            height: 58px !important;
+            font-size: 1rem !important;
+        }
+    }
+</style>
+
+@code {
+    public class OperationItem
+    {
+        public string Name { get; set; } = "";
+        public string Route { get; set; } = "";
+    }
+
+    private bool isLoading = true;
+
+    private List<OperationItem> operations =
+    [
+        new() { Name = "01.物料标签打印\n(常规尺寸)", Route = "/MaterialLabel" },
+        new() { Name = "03.标签绘制", Route = "/PrintDesign" },
+        new() { Name = "04.API测试页", Route = "/ApiTestPage" },
+        new() { Name = "05.测试页面", Route = "/test" },
+        new() { Name = "06.串口称重调试", Route = "/serial-weight-debug" },
+    ];
+
+    private List<OperationItem> operations2 =
+    [
+        new() { Name = "销售侧唛标签", Route = "/LabelPrintForSideMark" },
+        new() { Name = "CORD侧唛标签", Route = "/CORDLabel" },
+    ];
+
+    private List<OperationItem> operations3 =
+    [
+        new() { Name = "推杆条码打印", Route = "/LabelPrintZPCode" },
+        new() { Name = "办公标签打印", Route = "/LabelPrintForOffice" },
+        new() { Name = "工业标签打印", Route = "/LabelPrintForIndustry" },
+    ];
+
+    private List<OperationItem> operations4 =
+    [
+        new() { Name = "01.遮阳箱标签打印", Route = "/LabelPrintForZY" },
+        new() { Name = "02.线性外箱标签", Route = "/LabelPrintForXX" },
+        new() { Name = "03.HSK立柱双排标签", Route = "/LabelPrintForHSK" },
+        new() { Name = "04.LD_打包验证及外箱打印", Route = "/LabelPrintForLD40" },
+    ];
+
+    private List<OperationItem> operations5 =
+    [
+        new() { Name = "托盘标签打印", Route = "/TrayLabel" },
+        new() { Name = "LD标签打印", Route = "/LdLabel" },
+    ];
+
+    private List<OperationItem> operations6 = [];
+
+    protected override void OnInitialized()
+    {
+        isLoading = false;
+    }
+
+    private void NavigateToOperation(string route) => NavManager.NavigateTo(route);
+}

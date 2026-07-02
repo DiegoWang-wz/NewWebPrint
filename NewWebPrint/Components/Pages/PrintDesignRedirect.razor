@@ -1,0 +1,13 @@
+@page "/PrintDesign"
+@inject NavigationManager Navigation
+
+<MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-4" />
+
+@code {
+    private const string LabelDesignUrl = "https://192.168.14.232:5200/";
+
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo(LabelDesignUrl, forceLoad: true);
+    }
+}

@@ -1,0 +1,297 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject SnackbarHelper SnackbarHelper
+@inject LocalStorageHelper LocalStorage
+
+<style>
+    .mainlayout-desktop-only { display: block; }
+    .mainlayout-mobile-only { display: none; }
+    @@media (max-width: 959px) {
+        .mainlayout-desktop-only { display: none !important; }
+        .mainlayout-mobile-only { display: block !important; }
+    }
+    @@media (max-width: 768px) {
+        .mud-main-content { width: 100% !important; max-width: 100% !important; margin-left: 0 !important; margin-right: 0 !important; box-sizing: border-box !important; }
+    }
+
+    .mud-appbar .appbar-logo-link {
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        border-radius: 8px;
+        transition: background-color 0.15s ease;
+    }
+
+    .mud-appbar .appbar-logo-link:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .mud-appbar .appbar-trailing-actions {
+        display: inline-flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .mud-appbar .appbar-trailing-actions .appbar-action-button.mud-button-root,
+    .mud-appbar .mainlayout-mobile-only .appbar-action-button.mud-button-root {
+        background-color: transparent !important;
+        box-shadow: none !important;
+        color: #fff !important;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        min-height: 40px !important;
+        height: 40px !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        border-radius: 8px !important;
+        line-height: 1 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: background-color 0.15s ease;
+    }
+
+    .mud-appbar .appbar-trailing-actions .appbar-action-button.mud-button-root .mud-button-icon-start,
+    .mud-appbar .mainlayout-mobile-only .appbar-action-button.mud-button-root .mud-button-icon-start {
+        margin-inline-end: 6px !important;
+        margin-bottom: 0 !important;
+        color: #fff !important;
+    }
+
+    .mud-appbar .appbar-trailing-actions .appbar-action-button.mud-button-root:hover,
+    .mud-appbar .mainlayout-mobile-only .appbar-action-button.mud-button-root:hover {
+        background-color: rgba(255, 255, 255, 0.12) !important;
+    }
+
+    .mud-appbar .appbar-trailing-actions .appbar-action-button.mud-button-root:active,
+    .mud-appbar .mainlayout-mobile-only .appbar-action-button.mud-button-root:active {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+    }
+</style>
+
+<PageTitle>@CurrentPageTitle · 标签打印系统</PageTitle>
+<MudThemeProvider/>
+<MudPopoverProvider/>
+<MudDialogProvider/>
+<MudSnackbarProvider/>
+
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="true">
+
+        <div class="mainlayout-desktop-only appbar-logo-link" role="button" tabindex="0" @onclick="BackToHome" @onkeydown="OnLogoKeyDown">
+            <MudImage Src="/Images/jc_logo.png" Alt="Logo" Height="35" Width="180" ObjectFit="ObjectFit.Contain" Class="mt-1"/>
+        </div>
+
+        <div class="mainlayout-mobile-only">
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Inherit"
+                       Size="Size.Medium"
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       Class="appbar-action-button"
+                       OnClick="BackToHome">
+                返回
+            </MudButton>
+        </div>
+
+        <div style="position: absolute; left: 50%; transform: translateX(-50%); max-width: 50vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center;">
+            <MudChip T="string"
+                     Variant="Variant.Filled"
+                     Size="Size.Medium"
+                     Icon="@Icons.Material.Filled.VerifiedUser"
+                     Color="Color.Info"
+                     Class="mx-0">
+                @CurrentPageTitle
+            </MudChip>
+        </div>
+
+        <MudSpacer/>
+
+        <MudStack Class="mx-0" Row="true" AlignItems="AlignItems.Center" Spacing="0">
+            <div class="appbar-trailing-actions">
+                <div class="mainlayout-desktop-only">
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Inherit"
+                               Size="Size.Medium"
+                               StartIcon="@Icons.Material.Filled.ArrowBack"
+                               Class="appbar-action-button"
+                               OnClick="BackToHome">
+                        返回
+                    </MudButton>
+                </div>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" OffsetY="true">
+                    <ActivatorContent>
+                        <MudButton OnClick="@context.ToggleAsync"
+                                   Variant="Variant.Text"
+                                   Color="Color.Inherit"
+                                   Size="Size.Medium"
+                                   StartIcon="@Icons.Material.Filled.Menu"
+                                   Class="appbar-action-button">
+                            菜单
+                        </MudButton>
+                    </ActivatorContent>
+
+                    <ChildContent>
+                        <MudMenuItem Label="返回主页面" Icon="@Icons.Material.Filled.Home" OnClick="BackToHome"/>
+                        <div class="mainlayout-desktop-only">
+                            <MudMenuItem Label="下载 LocalAgent 代理程序" Icon="@Icons.Material.Filled.Download" OnClick="DownloadClient"/>
+                            <MudMenuItem Label="下载 VC++ 运行库（代理程序运行不了的安装此库）"
+                                         Icon="@Icons.Material.Filled.Extension"
+                                         OnClick="DownloadVcRedist"/>
+                        </div>
+                        <div class="mainlayout-mobile-only">
+                            <MudMenuItem Label="下载 APK" Icon="@Icons.Material.Filled.Android" OnClick="DownloadApk"/>
+                        </div>
+                        <MudDivider/>
+                        <div class="menu-print-agent-setting pa-3" @onclick:stopPropagation="true">
+                            <MudText Typo="Typo.caption" Class="mb-2" Style="color: rgba(0,0,0,0.6);">打印代理ip</MudText>
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                <MudTextField @bind-Value="_printAgentIp"
+                                              Placeholder="默认localhost"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Density="Density.Compact"
+                                              Style="min-width: 180px;"
+                                              Adornment="Adornment.End"
+                                              AdornmentIcon="@Icons.Material.Filled.Print"
+                                              Immediate="true"/>
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="SavePrintAgentUrl">
+                                    保存
+                                </MudButton>
+                            </MudStack>
+                        </div>
+                    </ChildContent>
+                </MudMenu>
+            </div>
+        </MudStack>
+    </MudAppBar>
+
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private const int PrintAgentPort = 5005;
+    private bool _inited;
+    private string _printAgentIp = "";
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_inited)
+        {
+            _inited = true;
+            try
+            {
+                await Task.Yield();
+                var url = await LocalStorage.GetPrintAgentBaseUrlAsync();
+                _printAgentIp = ParseIpFromUrl(url ?? "");
+                StateHasChanged();
+            }
+            catch
+            {
+                /* 忽略 */
+            }
+        }
+    }
+
+    private static string ParseIpFromUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        var u = url.Trim();
+        try
+        {
+            var uri = new Uri(u.Contains("://") ? u : "http://" + u);
+            return uri.Host ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private async Task SavePrintAgentUrl()
+    {
+        try
+        {
+            var ip = string.IsNullOrWhiteSpace(_printAgentIp) ? "" : _printAgentIp.Trim();
+            if (ip.Contains(':')) ip = ip.Split(':')[0].Trim();
+            string? urlToStore = null;
+            if (!string.IsNullOrEmpty(ip))
+                urlToStore = "http://" + ip + ":" + PrintAgentPort;
+            await LocalStorage.SetPrintAgentBaseUrlAsync(urlToStore);
+            var display = string.IsNullOrEmpty(ip) ? "localhost:" + PrintAgentPort : ip + ":" + PrintAgentPort;
+            SnackbarHelper.Show($"已保存，打印将使用：{display}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show("保存失败：" + ex.Message, Severity.Error);
+        }
+    }
+
+    private void BackToHome() => Nav.NavigateTo("/", forceLoad: false);
+
+    private void OnLogoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+            BackToHome();
+    }
+
+    private string CurrentPageTitle
+    {
+        get
+        {
+            var uri = Nav.ToBaseRelativePath(Nav.Uri);
+            if (uri.Contains('/')) uri = uri.Split('/')[0];
+
+            return uri switch
+            {
+                "" => "主页",
+                "ApiTestPage" => "SAP EWM 接口测试",
+                "CORDLabel" => "CORD侧唛标签",
+                "Error" => "错误",
+                "LabelPrintForIndustry" => "工业标签打印",
+                "LabelPrintForOffice" => "办公标签打印",
+                "LabelPrintForSideMark" => "销售侧唛标签",
+                "LabelPrintForXX" => "线性外箱标签",
+                "LabelPrintForZY" => "遮阳箱标签打印",
+                "LabelPrintZPCode" => "推杆条码打印",
+                "LdLabel" => "LD标签打印",
+                "MaterialLabel" => "物料标签",
+                "PrintDesign" => "标签绘制",
+                "serial-weight-debug" => "串口称重调试",
+                "test" => "测试页面",
+                "TrayLabel" => "托盘标签打印",
+                "LabelPrintForHSK" => "HSK立柱双排标签",
+                "LabelPrintForLD40" => "LD_打包验证及外箱打印",
+                _ => "主页"
+            };
+        }
+    }
+
+    private void DownloadClient() =>
+        Nav.NavigateTo(LocalAgentInstallerInfo.DownloadPath, forceLoad: true);
+
+    private void DownloadVcRedist() =>
+        Nav.NavigateTo(LocalAgentInstallerInfo.VcRedistDownloadPath, forceLoad: true);
+
+    private void DownloadApk() =>
+        Nav.NavigateTo(LocalAgentInstallerInfo.ApkDownloadPath, forceLoad: true);
+}

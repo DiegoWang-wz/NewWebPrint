@@ -1,0 +1,1563 @@
+﻿@page "/LabelPrintForHSK"
+@inject SnackbarHelper SnackbarHelper
+@inject LocalStorageHelper LocalStorage
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Globalization
+@using System.Linq
+@using NewWebPrint.Models.Api
+@using NewWebPrint.Services.SapEwm
+@using NewWebPrint.Utilities
+@inject ISapEwmService SapEwmService
+
+@rendermode InteractiveServer
+
+<MudGrid Class="pa-2" Justify="Justify.Center">
+    <MudItem xs="12" lg="11">
+        <MudPaper Elevation="3" Class="pa-2">
+            <MudTabs @bind-ActivePanelIndex="ActiveTabIndex"
+                     Elevation="0"
+                     Rounded
+                     ApplyEffectsToContainer
+                     PanelClass="pa-2 pt-4">
+
+                @* —— Tab 1：正常打印 —— *@
+                <MudTabPanel Text="正常打印" Icon="@Icons.Material.Filled.Print">
+                    <MudStack Spacing="1">
+                        <MudGrid Spacing="2" Class="d-flex align-center">
+                            <MudItem xs="12" md="8" lg="6">
+                                <KeypadTarget Label="请输入生产订单号" Dense @bind-Value="ProductionOrder"/>
+                            </MudItem>
+                            <MudItem xs="12" md="4" lg="3" Class="d-flex align-end">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Large"
+                                           FullWidth
+                                           OnClick="@SearchSubmit"
+                                           Disabled="@IsSearching">
+                                    @(IsSearching ? "查询中…" : "查询")
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+
+                        @if (IsSearching)
+                        {
+                            <MudProgressLinear Indeterminate Color="Color.Info"/>
+                        }
+
+                        <MudTable Items="@(_data is null ? Enumerable.Empty<int>() : new List<int> { 1 })"
+                                  T="int"
+                                  Hover
+                                  Dense
+                                  Breakpoint="Breakpoint.Sm"
+                                  Outlined>
+                            <HeaderContent>
+                                <MudTh>@T["HskOrderDetail_ColOrderNo"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColSalesOrder"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColMaterialCode"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColMaterialName"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColSpec"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColOrderQty"]</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="@T["HskOrderDetail_ColOrderNo"]">@_data!.GetString("orderNo")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColSalesOrder"]">@_data.GetString("SalesOrderNo")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColMaterialCode"]">@_data.GetString("materialCode")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColMaterialName"]">@_data.GetString("materialName")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColSpec"]">@_data.GetString("materialModel_zh")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColOrderQty"]">@_data.GetString("orderQuantity")</MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudText Typo="Typo.body2" Align="Align.Center"
+                                         Class="pa-2">@T["HskOrderDetail_NoData"]</MudText>
+                            </NoRecordsContent>
+                        </MudTable>
+
+                        <MudGrid Spacing="2" Class="mt-2">
+                            <MudItem xs="12" md="8">
+                                <MudPaper Outlined Class="pa-2">
+                                    <MudStack Spacing="3">
+                                        <MudGrid Spacing="2">
+                                            <MudItem xs="12" sm="6">
+                                                <MudSelect T="string" Label="请选择生产的产线"
+                                                           @bind-Value="SelectedProductionLine"
+                                                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense
+                                                           FullWidth>
+                                                    @foreach (var line in ProductionLineOptions)
+                                                    {
+                                                        <MudSelectItem T="string" Value="@line">@line</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <MudSelect T="string" Label="工厂" @bind-Value="SelectedFactory"
+                                                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense
+                                                           Placeholder="请选择" FullWidth>
+                                                    @foreach (var factory in FactoryOptions)
+                                                    {
+                                                        <MudSelectItem T="string"
+                                                                       Value="@factory">@factory</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+                                        </MudGrid>
+
+                                        <MudStack Row="true" Class="px-5">
+                                            <MudStack Row="true" Class="d-flex align-center">
+                                                <MudText Typo="Typo.body2">请输入打印起始值：</MudText>
+                                                <KeypadTarget Label="" @bind-Value="PrintSeqStart" Dense Disabled/>
+                                                <MudText Typo="Typo.h6">~</MudText>
+                                                <KeypadTarget Label="" @bind-Value="PrintSeqEnd" Dense/>
+                                            </MudStack>
+                                            <MudSpacer/>
+                                            <MudRadioGroup Value="HskPaperSpec" ValueChanged="OnHskPaperSpecChanged" T="string">
+                                                <MudStack Spacing="1" Row="true" Justify="Justify.FlexEnd">
+                                                    <MudRadio Value="@("37*10")" Color="Color.Primary" Dense>37*10
+                                                    </MudRadio>
+                                                    <MudRadio Value="@("44*16")" Color="Color.Primary" Dense>44*16
+                                                    </MudRadio>
+                                                </MudStack>
+                                            </MudRadioGroup>
+                                        </MudStack>
+
+                                        <KeypadTarget TValue="int" Label="每条记录打印份数"
+                                                      @bind-Value="CopiesPerRecord" Dense/>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4">
+                                <MudPaper Outlined Class="pa-2">
+                                    <MudStack Spacing="3" Class="h-100">
+                                        <MudDatePicker Label="@T["DateLabel"]" Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense"
+                                                       @bind-Date="PrintDate" FullWidth/>
+                                        <MudSelect T="string" Label="@T["SelectPrinter"]" @bind-Value="SelectedPrinter"
+                                                   Margin="Margin.Dense" Dense FullWidth
+                                                   Adornment="Adornment.Start"
+                                                   AdornmentIcon="@Icons.Material.Filled.Print"
+                                                   Variant="Variant.Outlined">
+                                            @foreach (var p in Printers)
+                                            {
+                                                <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                            }
+                                        </MudSelect>
+
+                                        <MudTooltip Text="@NormalPrintDisableHint">
+                                            <MudButton Variant="Variant.Filled"
+                                                       Color="Color.Success"
+                                                       Size="Size.Large"
+                                                       FullWidth
+                                                       StartIcon="@Icons.Material.Filled.Print"
+                                                       OnClick="@PrintSubmit"
+                                                       Disabled="@(IsPrinting || !CanNormalPrint)">
+                                                @(IsPrinting ? T["Printing"] : T["Print"])
+                                            </MudButton>
+                                        </MudTooltip>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudStack>
+                </MudTabPanel>
+
+                @* —— Tab 2：补打 —— *@
+                <MudTabPanel Text="补打" Icon="@Icons.Material.Filled.Replay">
+                    <MudStack Spacing="1">
+                        <MudGrid Spacing="2" Class="d-flex align-center">
+                            <MudItem xs="12" md="8" lg="6">
+                                <KeypadTarget Label="请输入生产订单号" Dense @bind-Value="ProductionOrder"/>
+                            </MudItem>
+                            <MudItem xs="12" md="4" lg="3" Class="d-flex align-end">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Large"
+                                           FullWidth
+                                           OnClick="@SearchSubmit"
+                                           Disabled="@IsSearching">
+                                    @(IsSearching ? "查询中…" : "查询")
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+
+                        @if (IsSearching)
+                        {
+                            <MudProgressLinear Indeterminate Color="Color.Info"/>
+                        }
+
+                        <MudTable Items="@(_data is null ? Enumerable.Empty<int>() : new List<int> { 1 })"
+                                  T="int"
+                                  Hover
+                                  Dense
+                                  Breakpoint="Breakpoint.Sm"
+                                  Outlined>
+                            <HeaderContent>
+                                <MudTh>@T["HskOrderDetail_ColOrderNo"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColSalesOrder"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColMaterialCode"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColMaterialName"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColSpec"]</MudTh>
+                                <MudTh>@T["HskOrderDetail_ColOrderQty"]</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="@T["HskOrderDetail_ColOrderNo"]">@_data!.GetString("orderNo")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColSalesOrder"]">@_data.GetString("SalesOrderNo")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColMaterialCode"]">@_data.GetString("materialCode")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColMaterialName"]">@_data.GetString("materialName")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColSpec"]">@_data.GetString("materialModel_zh")</MudTd>
+                                <MudTd
+                                    DataLabel="@T["HskOrderDetail_ColOrderQty"]">@_data.GetString("orderQuantity")</MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudText Typo="Typo.body2" Align="Align.Center"
+                                         Class="pa-2">@T["HskOrderDetail_NoData"]</MudText>
+                            </NoRecordsContent>
+                        </MudTable>
+
+                        <MudGrid Spacing="2" Class="mt-2">
+                            <MudItem xs="12" md="8">
+                                <MudPaper Outlined Class="pa-2">
+                                    <MudStack Spacing="3">
+                                        <MudGrid Spacing="2">
+                                            <MudItem xs="12" sm="6">
+                                                <MudSelect T="string" Label="请选择生产的产线"
+                                                           @bind-Value="SelectedProductionLine"
+                                                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense
+                                                           FullWidth>
+                                                    @foreach (var line in ProductionLineOptions)
+                                                    {
+                                                        <MudSelectItem T="string" Value="@line">@line</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <MudSelect T="string" Label="工厂" @bind-Value="SelectedFactory"
+                                                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense
+                                                           Placeholder="请选择" FullWidth>
+                                                    @foreach (var factory in FactoryOptions)
+                                                    {
+                                                        <MudSelectItem T="string"
+                                                                       Value="@factory">@factory</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <KeypadTarget @bind-Value="ReprintAccount" Label="补打账号" Dense/>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <MudTextField @bind-Value="ReprintPassword" Label="账号密码"
+                                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                              InputType="InputType.Password" FullWidth/>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <KeypadTarget @bind-Value="ResponsiblePerson" Label="责任人" Dense/>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="6">
+                                                <KeypadTarget @bind-Value="ReprintReason" Label="补打原因" Dense/>
+                                            </MudItem>
+                                        </MudGrid>
+
+
+                                        <MudStack Row="true" Class="px-5">
+                                            <MudStack Row="true" Class="d-flex align-center">
+                                                <MudText Typo="Typo.body2">请输入打印起始值：</MudText>
+                                                <KeypadTarget Label="" @bind-Value="PrintSeqStart" Dense/>
+                                                <MudText Typo="Typo.h6">~</MudText>
+                                                <KeypadTarget Label="" @bind-Value="PrintSeqEnd" Dense/>
+                                            </MudStack>
+                                            <MudSpacer/>
+                                            <MudRadioGroup Value="HskPaperSpec" ValueChanged="OnHskPaperSpecChanged" T="string">
+                                                <MudStack Spacing="1" Row="true" Justify="Justify.FlexEnd">
+                                                    <MudRadio Value="@("37*10")" Color="Color.Primary" Dense>37*10
+                                                    </MudRadio>
+                                                    <MudRadio Value="@("44*16")" Color="Color.Primary" Dense>44*16
+                                                    </MudRadio>
+                                                </MudStack>
+                                            </MudRadioGroup>
+                                        </MudStack>
+
+
+                                        <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled>补打台账
+                                            </MudButton>
+                                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled>修改密码
+                                            </MudButton>
+                                        </MudStack>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4">
+                                <MudPaper Outlined Class="pa-2">
+                                    <MudStack Spacing="3" Class="h-100">
+                                        <MudStack Row="true">
+                                            <MudDatePicker Label="@T["DateLabel"]" Variant="Variant.Outlined"
+                                                           Margin="Margin.Dense"
+                                                           @bind-Date="PrintDate" FullWidth/>
+                                            <KeypadTarget TValue="int" Label="每条记录打印份数"
+                                                          @bind-Value="CopiesPerRecord" Dense/>
+                                        </MudStack>
+
+                                        <MudSelect T="string" Label="@T["SelectPrinter"]" @bind-Value="SelectedPrinter"
+                                                   Margin="Margin.Dense" Dense FullWidth
+                                                   Adornment="Adornment.Start"
+                                                   AdornmentIcon="@Icons.Material.Filled.Print"
+                                                   Variant="Variant.Outlined">
+                                            @foreach (var p in Printers)
+                                            {
+                                                <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <KeypadTarget @bind-Value="ReprintBarcode" Label="请输入补打条码" Dense/>
+                                        <MudTooltip Text="@ReprintPrintDisableHint">
+                                            <MudButton Variant="Variant.Filled"
+                                                       Color="Color.Warning"
+                                                       Size="Size.Large"
+                                                       FullWidth
+                                                       StartIcon="@Icons.Material.Filled.Replay"
+                                                       OnClick="@PrintSubmit"
+                                                       Disabled="@(IsPrinting || !CanReprint)">
+                                                @(IsPrinting ? T["Printing"] : "补打打印")
+                                            </MudButton>
+                                        </MudTooltip>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudStack>
+                </MudTabPanel>
+
+                @* —— Tab 3：NG 条码打印 —— *@
+                <MudTabPanel Text="NG条码打印" Icon="@Icons.Material.Filled.Warning">
+                    <MudStack Spacing="3">
+                        <MudGrid Spacing="2" Class="d-flex align-center">
+                            <MudItem xs="12" md="4" lg="6">
+                                <KeypadTarget Label="请输入 NG 条码生产订单" Dense @bind-Value="NgProductionOrder"/>
+                            </MudItem>
+    
+                            <MudItem xs="12" md="4" lg="3">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Large"
+                                           FullWidth
+                                           OnClick="@SearchNgSubmit"
+                                           Disabled="@IsSearchingNg">
+                                    @(IsSearchingNg ? "查询中…" : "查询")
+                                </MudButton>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4" lg="3" Class="d-flex justify-end gap-2">
+                                <MudButton Variant="Variant.Outlined" OnClick="@SelectAllNg"
+                                           Disabled="@(NgBarcodeRows.Count == 0)">
+                                    全选
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" OnClick="@ClearNgSelection"
+                                           Disabled="@(NgBarcodeRows.Count == 0)">
+                                    取消
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+
+                        @if (IsSearchingNg)
+                        {
+                            <MudProgressLinear Indeterminate Color="Color.Info"/>
+                        }
+                        
+
+                        <MudTable Items="@NgBarcodeRows"
+                                  T="NgBarcodeRow"
+                                  Hover
+                                  Dense
+                                  Breakpoint="Breakpoint.Sm"
+                                  Outlined
+                                  MultiSelection
+                                  @bind-SelectedItems="NgSelectedRows">
+                            <HeaderContent>
+                                <MudTh>NG条码</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="NG条码">@context.Barcode</MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudText Typo="Typo.body2" Align="Align.Center" Class="pa-2">
+                                    请输入生产订单并查询 NG 条码
+                                </MudText>
+                            </NoRecordsContent>
+                        </MudTable>
+                        <MudGrid>
+                            <MudItem xs="12" md="8">
+                                <OperationLog Content="@PrintMessages" Title="在此输出信息"/>
+                            </MudItem>
+                            <MudItem xs="12" md="4">
+                                <MudPaper Outlined Class="pa-2">
+                                    <MudStack Spacing="3" Class="h-100">
+                                        <MudDatePicker Label="@T["DateLabel"]" Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense"
+                                                       @bind-Date="PrintDate" FullWidth/>
+                                        <MudSelect T="string" Label="@T["SelectPrinter"]" @bind-Value="SelectedPrinter"
+                                                   Margin="Margin.Dense" Dense FullWidth
+                                                   Adornment="Adornment.Start"
+                                                   AdornmentIcon="@Icons.Material.Filled.Print"
+                                                   Variant="Variant.Outlined">
+                                            @foreach (var p in Printers)
+                                            {
+                                                <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudTooltip Text="@NgPrintDisableHint">
+                                            <MudButton Variant="Variant.Filled"
+                                                       Color="Color.Error"
+                                                       Size="Size.Large"
+                                                       FullWidth
+                                                       StartIcon="@Icons.Material.Filled.Print"
+                                                       OnClick="@PrintNgSelectedSubmit"
+                                                       Disabled="@(IsPrinting || !CanNgPrint)">
+                                                @(IsPrinting ? T["Printing"] : "打印选中条码")
+                                            </MudButton>
+                                        </MudTooltip>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudStack>
+                </MudTabPanel>
+            </MudTabs>
+
+            @if (IsPrinting)
+            {
+                <MudPaper Outlined Class="pa-3 mt-2 mb-2">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.body2">@PrintProgressLabel</MudText>
+                        @if (PrintProgressTotal > 0)
+                        {
+                            <MudProgressLinear Value="@PrintProgressValue"
+                                               Color="Color.Primary"
+                                               Rounded
+                                               Size="Size.Medium"/>
+                            <MudText Typo="Typo.caption" Align="Align.End">
+                                @PrintProgressCurrent / @PrintProgressTotal（@PrintProgressPercentText）
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudProgressLinear Indeterminate Color="Color.Primary" Rounded Size="Size.Medium"/>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @if (ActiveTabIndex == 1 || ActiveTabIndex == 0)
+            {
+                <OperationLog Content="@PrintMessages" Title="在此输出信息" HeightPx="180"/>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    int PrintProgressCurrent { get; set; }
+    int PrintProgressTotal { get; set; }
+    string PrintProgressLabel { get; set; } = string.Empty;
+    string PrintMessages { get; set; } = string.Empty;
+
+    double PrintProgressValue =>
+        PrintProgressTotal > 0 ? (double)PrintProgressCurrent / PrintProgressTotal * 100d : 0d;
+
+    string PrintProgressPercentText =>
+        PrintProgressTotal > 0
+            ? $"{PrintProgressValue:F0}%"
+            : string.Empty;
+    DateTime? PrintDate { get; set; } = DateTime.Today;
+
+    /// <summary>37*10 → 纸张 77×10mm；44*16 → 纸张 91×16mm</summary>
+    string HskPaperSpec { get; set; } = "37*10";
+
+    /// <summary>产线下拉 A～Z（与 WinForms comboBox_Line 一致，条码产线码即所选字母）。</summary>
+    static readonly string[] ProductionLineOptions =
+        Enumerable.Range('A', 26).Select(c => ((char)c).ToString(CultureInfo.InvariantCulture)).ToArray();
+
+    static readonly string[] FactoryOptions =
+    [
+        "1101全球生产基地",
+        "1200海仕凯",
+        "4000 J-Star MYS"
+    ];
+
+    string SelectedProductionLine { get; set; } = "A";
+    int _orderQtyEndSpare;
+    string? SelectedFactory { get; set; }
+    string PrintSeqStart { get; set; } = "1";
+    string PrintSeqEnd { get; set; } = "";
+    bool IsReprintMode { get; set; }
+    int CopiesPerRecord { get; set; } = 1;
+    string ReprintBarcode { get; set; } = "";
+    string ReprintAccount { get; set; } = "";
+    string ReprintPassword { get; set; } = "";
+    string ResponsiblePerson { get; set; } = "";
+    string ReprintReason { get; set; } = "";
+
+    const int ReprintTabIndex = 1;
+    const int NgTabIndex = 2;
+
+    int _activeTabIndex;
+
+    int ActiveTabIndex
+    {
+        get => _activeTabIndex;
+        set => SetActiveTabIndex(value);
+    }
+
+    bool HasValidReprintBarcode =>
+        !string.IsNullOrWhiteSpace(ReprintBarcode) && ReprintBarcode.Trim().Length == 20;
+
+    bool CanNormalPrint =>
+        _data is not null
+        && !string.IsNullOrWhiteSpace(SelectedFactory)
+        && !string.IsNullOrWhiteSpace(SelectedPrinter)
+        && string.IsNullOrWhiteSpace(ReprintBarcode);
+
+    /// <summary>补打：工厂/打印机/账号/原因 +（已查单 或 20 位补打条码）。</summary>
+    bool CanReprint =>
+        !string.IsNullOrWhiteSpace(SelectedFactory)
+        && !string.IsNullOrWhiteSpace(SelectedPrinter)
+        && !string.IsNullOrWhiteSpace(ReprintReason)
+        && !string.IsNullOrWhiteSpace(ReprintAccount)
+        && (_data is not null || HasValidReprintBarcode);
+
+    string NormalPrintDisableHint => GetNormalPrintDisableHint();
+
+    string ReprintPrintDisableHint => GetReprintPrintDisableHint();
+
+    bool CanNgPrint =>
+        !string.IsNullOrWhiteSpace(SelectedFactory)
+        && !string.IsNullOrWhiteSpace(SelectedPrinter)
+        && !string.IsNullOrWhiteSpace(ReprintReason)
+        && !string.IsNullOrWhiteSpace(ReprintAccount)
+        && NgSelectedRows.Count > 0;
+
+    string NgPrintDisableHint => GetNgPrintDisableHint();
+
+    private SapEwmDynamicPayload? _data;
+    string ProductionOrder { get; set; } = "";
+    bool IsSearching { get; set; }
+
+    string NgProductionOrder { get; set; } = "";
+    bool IsSearchingNg { get; set; }
+    List<NgBarcodeRow> NgBarcodeRows { get; set; } = new();
+    HashSet<NgBarcodeRow> NgSelectedRows { get; set; } = new();
+
+    sealed record NgBarcodeRow(string Barcode);
+
+    /// <summary>查单时的起始序号备用（WinForms start_spare），用于判断是否回写历史表。</summary>
+    int _printSeqStartSpare = 1;
+
+    BLLHSKCode? _hskBll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hskBll = new BLLHSKCode(Config);
+        await LoadHskPaperSpecAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            "TrayLabel_printer",
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    async Task LoadHskPaperSpecAsync()
+    {
+        try
+        {
+            var saved = await LocalStorage.GetStringAsync(StorageKeys.LabelPrintForHskPaperSpec);
+            if (saved is "37*10" or "44*16")
+                HskPaperSpec = saved;
+        }
+        catch
+        {
+            // 忽略 storage 读取失败
+        }
+    }
+
+    async Task OnHskPaperSpecChanged(string value)
+    {
+        if (HskPaperSpec == value)
+            return;
+
+        HskPaperSpec = value;
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.LabelPrintForHskPaperSpec, value);
+        }
+        catch
+        {
+            // 忽略 storage 写入失败
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SearchSubmit()
+    {
+        if (IsSearching) return;
+        var orderInput = ProductionOrder.Trim();
+        if (string.IsNullOrWhiteSpace(orderInput))
+        {
+            SnackbarHelper.Show("请输入生产单号", Severity.Warning);
+            return;
+        }
+
+        if (orderInput.Length < 6)
+        {
+            SnackbarHelper.Show("生产订单号输入错误，请输入6、7位数字的生产单号", Severity.Warning);
+            return;
+        }
+
+        IsSearching = true;
+        _data = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            string langParam = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh" ? "1" : "E";
+
+            var response = await SapEwmService.InvokeDynamicAsync(
+                "GetProductInfo",
+                new Dictionary<string, string?> { ["po"] = ProductionOrder.Trim(), ["lang"] = langParam },
+                logToBrowserConsole: true);
+
+            if (response.Code != ApiResultCode.Success || response.Data is null)
+            {
+                SnackbarHelper.Show(response.Message, Severity.Error);
+                return;
+            }
+
+            _data = response.Data;
+            await ApplyOrderPrintRangeAsync(
+                resetReprintMode: ActiveTabIndex != ReprintTabIndex,
+                logToOutput: true);
+            if (ActiveTabIndex == ReprintTabIndex)
+                EnterReprintMode();
+
+            SnackbarHelper.Show("查询成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task BeginPrintingUiAsync()
+    {
+        IsPrinting = true;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = "准备打印…";
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+    }
+
+    async Task EndPrintingUiAsync()
+    {
+        IsPrinting = false;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static bool ShouldRefreshPrintProgress(int index, int total) =>
+        total <= 30 || index == 0 || index == total - 1 || index % Math.Max(1, total / 40) == 0;
+
+    async Task SetPrintProgressAsync(int current, int total, string label)
+    {
+        PrintProgressCurrent = current;
+        PrintProgressTotal = Math.Max(0, total);
+        PrintProgressLabel = label;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    string GetNormalPrintDisableHint()
+    {
+        if (IsPrinting) return "正在打印中…";
+        if (_data is null) return "请先查询生产订单";
+        if (string.IsNullOrWhiteSpace(SelectedFactory)) return "请选择工厂";
+        if (string.IsNullOrWhiteSpace(SelectedPrinter)) return "请选择打印机";
+        if (!string.IsNullOrWhiteSpace(ReprintBarcode))
+            return "正常打印时请勿填写补打条码（请到「补打」Tab）";
+        return string.Empty;
+    }
+
+    string GetReprintPrintDisableHint()
+    {
+        if (IsPrinting) return "正在打印中…";
+        if (string.IsNullOrWhiteSpace(SelectedFactory)) return "请选择工厂";
+        if (string.IsNullOrWhiteSpace(SelectedPrinter)) return "请选择打印机";
+        if (string.IsNullOrWhiteSpace(ReprintAccount)) return "请填写补打账号";
+        if (string.IsNullOrWhiteSpace(ReprintReason)) return "请填写补打原因";
+        if (_data is null && !HasValidReprintBarcode)
+        {
+            if (!string.IsNullOrWhiteSpace(ReprintBarcode))
+                return "补打条码必须为 20 位，或先查询生产订单";
+            return "请先查询生产订单，或输入 20 位补打条码";
+        }
+
+        return string.Empty;
+    }
+
+    async Task ApplyOrderPrintRangeAsync(bool resetReprintMode = true, bool logToOutput = false)
+    {
+        if (resetReprintMode)
+            IsReprintMode = false;
+        var productionNo = _data?.GetString("orderNo")?.Trim() ?? ProductionOrder.Trim();
+
+        int nextSeq = 1;
+        if (_hskBll is not null && !string.IsNullOrWhiteSpace(productionNo))
+        {
+            try
+            {
+                nextSeq = await Task.Run(() => _hskBll.GetPrintHistoryEndNum(productionNo));
+                if (logToOutput)
+                    AppendLog($"查询成功：订单 {productionNo}，打印起始序号 {nextSeq}");
+            }
+            catch (Exception ex)
+            {
+                if (logToOutput)
+                    AppendLog($"查询订单成功，但读取打印序号失败，使用默认值 1：{ex.Message}");
+                nextSeq = 1;
+            }
+        }
+
+        _printSeqStartSpare = nextSeq;
+        PrintSeqStart = nextSeq.ToString(CultureInfo.InvariantCulture);
+
+        var qtyRaw = _data?.GetString("orderQuantity");
+        if (double.TryParse(qtyRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty)
+            || double.TryParse(qtyRaw, NumberStyles.Any, CultureInfo.CurrentCulture, out qty))
+        {
+            _orderQtyEndSpare = (int)Math.Max(1, Math.Floor(qty));
+        }
+        else
+        {
+            _orderQtyEndSpare = 0;
+        }
+
+        if (IsReprintMode)
+            PrintSeqEnd = "";
+        else
+            ResetPrintSeqEndToOrderQty();
+    }
+
+    void SetActiveTabIndex(int index)
+    {
+        if (_activeTabIndex == index)
+            return;
+
+        var previous = _activeTabIndex;
+        _activeTabIndex = index;
+
+        if (previous == ReprintTabIndex && index != ReprintTabIndex)
+            ExitReprintMode();
+        else if (index == ReprintTabIndex && previous != ReprintTabIndex)
+            EnterReprintMode();
+    }
+
+    void EnterReprintMode()
+    {
+        IsReprintMode = true;
+        PrintSeqEnd = "";
+    }
+
+    void ExitReprintMode()
+    {
+        IsReprintMode = false;
+        if (_data is not null)
+            _ = ApplyOrderPrintRangeAsync(logToOutput: false);
+        else
+        {
+            PrintSeqStart = "1";
+            PrintSeqEnd = "";
+        }
+    }
+
+    async Task SearchNgSubmit()
+    {
+        if (IsSearchingNg) return;
+        var orderInput = NgProductionOrder.Trim();
+        if (string.IsNullOrWhiteSpace(orderInput))
+        {
+            SnackbarHelper.Show("请输入 NG 条码生产订单", Severity.Warning);
+            return;
+        }
+
+        if (_hskBll is null)
+        {
+            SnackbarHelper.Show("未配置 HskCode 数据库连接", Severity.Error);
+            return;
+        }
+
+        IsSearchingNg = true;
+        NgBarcodeRows = new List<NgBarcodeRow>();
+        NgSelectedRows = new HashSet<NgBarcodeRow>();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var barcodes = await Task.Run(() => _hskBll.QueryNgBarcodes(orderInput));
+            NgBarcodeRows = barcodes.Select(b => new NgBarcodeRow(b)).ToList();
+            if (NgBarcodeRows.Count == 0)
+            {
+                AppendLog($"NG 查询完成：订单 {orderInput} 未找到 NG 条码");
+                SnackbarHelper.Show("未找到组件信息", Severity.Info);
+            }
+            else
+            {
+                AppendLog($"NG 查询完成：订单 {orderInput}，共 {NgBarcodeRows.Count} 条");
+                SnackbarHelper.Show($"查询到 {NgBarcodeRows.Count} 条 NG 条码", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"NG 查询报错：{ex.Message}");
+            SnackbarHelper.Show($"查询组件报错：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearchingNg = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void SelectAllNg()
+    {
+        NgSelectedRows = NgBarcodeRows.ToHashSet();
+        StateHasChanged();
+    }
+
+    void ClearNgSelection()
+    {
+        NgSelectedRows = new HashSet<NgBarcodeRow>();
+        StateHasChanged();
+    }
+
+    async Task PrintNgSelectedSubmit()
+    {
+        if (IsPrinting) return;
+        if (!CanNgPrint)
+        {
+            SnackbarHelper.Show(NgPrintDisableHint.Length > 0 ? NgPrintDisableHint : "请先查询并勾选 NG 条码", Severity.Warning);
+            return;
+        }
+
+        await BeginPrintingUiAsync();
+        try
+        {
+            if (!await ValidateReprintCredentialsAsync())
+                return;
+
+            var codes = NgSelectedRows.Select(r => r.Barcode).ToList();
+
+            AppendLog($"NG 打印：共 {codes.Count} 条（逐条提交，条码非连续序号）");
+            await PrintHskLabelsAsync(
+                PrintDate ?? DateTime.Today,
+                codes,
+                seqStart: 0,
+                seqEnd: 0,
+                isReprint: false,
+                useMultiColumn: false,
+                persistBarcodes: false,
+                saveSeqHistory: false,
+                lockStartAfterNormalPrint: false,
+                forcePaper37x10: true);
+        }
+        finally
+        {
+            await EndPrintingUiAsync();
+        }
+    }
+
+    string GetNgPrintDisableHint()
+    {
+        if (IsPrinting) return "正在打印中…";
+        if (string.IsNullOrWhiteSpace(SelectedFactory)) return "请选择工厂";
+        if (string.IsNullOrWhiteSpace(SelectedPrinter)) return "请选择打印机";
+        if (string.IsNullOrWhiteSpace(ReprintReason)) return "请填写补打原因";
+        if (string.IsNullOrWhiteSpace(ReprintAccount)) return "请填写补打账号";
+        if (NgSelectedRows.Count == 0) return "请勾选至少一条 NG 条码";
+        return string.Empty;
+    }
+
+    async Task<bool> ValidateReprintCredentialsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ReprintReason))
+        {
+            SnackbarHelper.Show("补打请输入原因", Severity.Warning);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ReprintAccount))
+        {
+            SnackbarHelper.Show("请填写补打账号", Severity.Warning);
+            return false;
+        }
+
+        if (_hskBll is null)
+        {
+            SnackbarHelper.Show("未配置 HskCode 数据库连接", Severity.Error);
+            return false;
+        }
+
+        try
+        {
+            var ok = await Task.Run(() =>
+                _hskBll.ValidateReprintUser(ReprintAccount.Trim(), ReprintPassword ?? ""));
+            if (!ok)
+            {
+                SnackbarHelper.Show("检查补打账号信息", Severity.Error);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"补打账号校验失败：{ex.Message}", Severity.Error);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// HSK 20 位编码：年份(1)+日期MMDD(4)+销单号+打印序号4位+产线(1)+订单末两位（重码时末位变 a）。
+    /// 与 WinForms AddCode 拼接规则一致。
+    /// </summary>
+    string BuildHskBarcode20(SapEwmDynamicPayload data, DateTime date, int printSeq, bool isReprint = false)
+    {
+        string year1 = (date.Year - 2020).ToString(CultureInfo.InvariantCulture);
+        string date4 = date.ToString("MMdd", CultureInfo.InvariantCulture);
+        string salesOrder = ResolveSalesOrderForBarcode(data);
+        string product2 = ResolveProduct2Suffix(data, date, isReprint);
+
+        int seq = Math.Clamp(printSeq, 1, 9999);
+        string series = seq.ToString("0000", CultureInfo.InvariantCulture);
+        string lineCode = MapProductionLineToCode(SelectedProductionLine);
+
+        return year1 + date4 + salesOrder + series + lineCode + product2;
+    }
+
+    /// <summary>销单号用于条码：保留前导零；空则用生产订单 Substring(1,8)（与 WinForms AddCode 一致）。</summary>
+    static string ResolveSalesOrderForBarcode(SapEwmDynamicPayload data)
+    {
+        var sales = data.GetString("SalesOrderNo") ?? "";
+        if (sales is "" or "0")
+        {
+            var po = data.GetString("orderNo") ?? "";
+            return po.Length > 8 ? po.Substring(1, 8) : po;
+        }
+
+        return sales;
+    }
+
+    /// <summary>产线字母 A～Z 直接作为条码产线码；兼容旧版数字 1～16 → A～P。</summary>
+    static string MapProductionLineToCode(string? lineText) => lineText switch
+    {
+        "1" => "A",
+        "2" => "B",
+        "3" => "C",
+        "4" => "D",
+        "5" => "E",
+        "6" => "F",
+        "7" => "G",
+        "8" => "H",
+        "9" => "I",
+        "10" => "J",
+        "11" => "K",
+        "12" => "L",
+        "13" => "M",
+        "14" => "N",
+        "15" => "O",
+        "16" => "P",
+        _ => string.IsNullOrWhiteSpace(lineText) ? "A" : lineText.Trim().ToUpperInvariant()
+    };
+
+    string ResolveProduct2Suffix(SapEwmDynamicPayload data, DateTime date, bool isReprint)
+    {
+        var po = data.GetString("orderNo") ?? "";
+        var productNo7 = po.Length >= 8 ? po.Substring(7, 1) : "0";
+        var productNo8 = po.Length >= 9 ? po.Substring(8, 1) : po.Length >= 1 ? po[^1].ToString() : "0";
+        var product2 = productNo7 + productNo8;
+
+        if (isReprint || _hskBll is null)
+            return product2;
+
+        var sales = ResolveSalesOrderForBarcode(data);
+        var lineCode = MapProductionLineToCode(SelectedProductionLine);
+        var year1 = (date.Year - 2020).ToString(CultureInfo.InvariantCulture);
+        var date4 = date.ToString("MMdd", CultureInfo.InvariantCulture);
+
+        try
+        {
+            var historyQty = _hskBll.GetHistoryQty(sales, lineCode, year1 + date4, product2);
+            if (historyQty > 0)
+                product2 = productNo7 + "a";
+        }
+        catch
+        {
+            // 查重失败时仍用订单末两位，不阻断打印
+        }
+
+        return product2;
+    }
+
+    void ResetPrintSeqEndToOrderQty()
+    {
+        if (_orderQtyEndSpare > 0)
+            PrintSeqEnd = _orderQtyEndSpare.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>序号范围：1～订单量，结束≥起始；正常打印起始固定为查单时数据库序号。</summary>
+    bool TryValidatePrintSeqRange(int seqStart, int seqEnd, bool isNormalPrintTab, out string errorMessage)
+    {
+        errorMessage = string.Empty;
+        if (seqStart < 1)
+        {
+            errorMessage = "打印起始值无效";
+            return false;
+        }
+
+        if (seqEnd < seqStart)
+        {
+            errorMessage = "结束值必须大于或等于起始值";
+            return false;
+        }
+
+        var orderQty = ResolveOrderQuantityMax();
+        if (orderQty > 0)
+        {
+            if (seqEnd > orderQty)
+            {
+                errorMessage = "结束值不可大于订单数量";
+                return false;
+            }
+
+            if (seqStart > orderQty)
+            {
+                errorMessage = "起始值不可大于订单数量";
+                return false;
+            }
+        }
+
+        if (isNormalPrintTab && seqStart != _printSeqStartSpare)
+        {
+            errorMessage = $"起始序号应为 {_printSeqStartSpare}（由系统根据已打印记录自动给出，不可修改）";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>LocalAgent 多列打印：固定前缀 + {index:4} + 固定后缀（仅序号滚动）。</summary>
+    string BuildHskBarcodePattern(SapEwmDynamicPayload data, DateTime date, bool isReprint)
+    {
+        var year1 = (date.Year - 2020).ToString(CultureInfo.InvariantCulture);
+        var date4 = date.ToString("MMdd", CultureInfo.InvariantCulture);
+        var salesOrder = ResolveSalesOrderForBarcode(data);
+        var product2 = ResolveProduct2Suffix(data, date, isReprint);
+        var lineCode = MapProductionLineToCode(SelectedProductionLine);
+        return year1 + date4 + salesOrder + "{index:4}" + lineCode + product2;
+    }
+
+    List<string> BuildHskBarcodeList(SapEwmDynamicPayload data, DateTime date, int seqStart, int seqEnd, bool isReprint)
+    {
+        var list = new List<string>(Math.Max(0, seqEnd - seqStart + 1));
+        for (var i = seqStart; i <= seqEnd; i++)
+            list.Add(BuildHskBarcode20(data, date, i, isReprint));
+        return list;
+    }
+
+    /// <summary>单标签模板 + GapMm 多列（LocalAgent ExpandMultiColumn）。Blocks[0] 必须为条码且 Width 参与列宽计算。</summary>
+    PrintLayoutModel CreateHskMultiColumnLayout(
+        string barcodePattern,
+        int seqStart,
+        int printCount,
+        bool forcePaper37x10 = false)
+    {
+        var copies = Math.Max(1, CopiesPerRecord);
+        var useLarge = !forcePaper37x10 && HskPaperSpec == "44*16";
+
+        if (useLarge)
+        {
+            return new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = 91f,
+                PaperHeightMm = 16f,
+                Copies = copies,
+                StartValue = seqStart,
+                PrintCount = printCount,
+                GapMm = 10f,
+                Blocks = CreateHskSingleLabelBlocks91(barcodePattern)
+            };
+        }
+
+        return new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = 77f,
+            PaperHeightMm = 10f,
+            Copies = copies,
+            StartValue = seqStart,
+            PrintCount = printCount,
+            GapMm = 5.5f,
+            Blocks = CreateHskSingleLabelBlocks82(barcodePattern)
+        };
+    }
+
+    /// <summary>固定条码（手输补打 / NG 单条），不设 GapMm。</summary>
+    PrintLayoutModel CreateHskFixedCodeLayout(string code, bool forcePaper37x10 = false)
+    {
+        var copies = Math.Max(1, CopiesPerRecord);
+        var useLarge = !forcePaper37x10 && HskPaperSpec == "44*16";
+
+        if (useLarge)
+        {
+            return new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = 91f,
+                PaperHeightMm = 16f,
+                Copies = copies,
+                StartValue = 1,
+                PrintCount = 1,
+                Blocks = CreateHskSingleLabelBlocks91(code)
+            };
+        }
+
+        return new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = 77f,
+            PaperHeightMm = 10f,
+            Copies = copies,
+            StartValue = 1,
+            PrintCount = 1,
+            Blocks = CreateHskSingleLabelBlocks82(code)
+        };
+    }
+
+    static List<PrintBlock> CreateHskSingleLabelBlocks82(string barcodeValue) =>
+    [
+        new PrintBlock
+        {
+            Name = "Block 1",
+            X = 2f,
+            Y = 0f,
+            Width = 32f,
+            Height = 7f,
+            ShowBorder = false,
+            BorderStyle = "Solid",
+            Barcode = new BarcodeElement
+            {
+                Value = barcodeValue,
+                SafeMarginMm = 1f,
+                Format = "CODE_128",
+                OffsetXMm = 0f,
+                ShowTextBelow = false,
+                DigitBold = false,
+                DigitOffsetYMm = 0f,
+            },
+        },
+        new PrintBlock
+        {
+            Name = "Block 2",
+            X = 2f,
+            Y = 6f,
+            Width = 32f,
+            Height = 4f,
+            ShowBorder = false,
+            BorderStyle = "Solid",
+            Text = new TextElement
+            {
+                Content = barcodeValue,
+                FontName = "SimSun",
+                FontSize = 8.5f,
+                Bold = false,
+                Align = "left",
+                VerticalAlign = "middle",
+                AutoFit = false,
+            },
+        }
+    ];
+
+    static List<PrintBlock> CreateHskSingleLabelBlocks91(string barcodeValue) =>
+    [
+        new PrintBlock
+        {
+            Name = "Block 1",
+            X = 4f,
+            Y = 1f,
+            Width = 35f,      
+            Height = 10f,
+            ShowBorder = false,
+            BorderStyle = "Solid",
+            Barcode = new BarcodeElement
+            {
+                Value = barcodeValue,
+                SafeMarginMm = 1f,
+                Format = "CODE_128",
+                OffsetXMm = 0f,
+                ShowTextBelow = false,
+                DigitBold = false,
+                DigitOffsetYMm = 0f,
+            },
+        },
+        new PrintBlock
+        {
+            Name = "Block 2",
+            X = 5f,
+            Y = 11f,
+            Width = 34f,
+            Height = 5f,
+            ShowBorder = false,
+            BorderStyle = "Solid",
+            Text = new TextElement
+            {
+                Content = barcodeValue,
+                FontName = "SimSun",
+                FontSize = 9f,
+                Bold = false,
+                Align = "left",
+                VerticalAlign = "middle",
+                AutoFit = false,
+            },
+        }
+    ];
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (string.IsNullOrWhiteSpace(SelectedFactory))
+        {
+            SnackbarHelper.Show("请先选择工厂", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        await BeginPrintingUiAsync();
+        try
+        {
+            var date = PrintDate ?? DateTime.Today;
+            var manualReprint = !string.IsNullOrWhiteSpace(ReprintBarcode);
+            var isReprint = IsReprintMode || manualReprint;
+
+            if (isReprint && !await ValidateReprintCredentialsAsync())
+                return;
+
+            if (manualReprint)
+            {
+                var bdCode = ReprintBarcode.Trim();
+                if (bdCode.Length != 20)
+                {
+                    SnackbarHelper.Show("补打条码必须为 20 位", Severity.Warning);
+                    return;
+                }
+
+                await PrintHskLabelsAsync(
+                    date,
+                    [bdCode],
+                    seqStart: 0,
+                    seqEnd: 0,
+                    isReprint: true,
+                    useMultiColumn: false,
+                    persistBarcodes: true,
+                    saveSeqHistory: false,
+                    lockStartAfterNormalPrint: false,
+                    isManualReprint: true);
+                return;
+            }
+
+            if (_data is null)
+            {
+                SnackbarHelper.Show("请先查询生产订单后再打印", Severity.Warning);
+                return;
+            }
+
+            if (!int.TryParse(PrintSeqStart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seqStart)
+                || seqStart < 1)
+            {
+                SnackbarHelper.Show("打印起始值无效", Severity.Warning);
+                return;
+            }
+
+            if (!int.TryParse(PrintSeqEnd, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seqEnd))
+                seqEnd = seqStart;
+
+            var isNormalPrintTab = !IsReprintMode && string.IsNullOrWhiteSpace(ReprintBarcode);
+            if (!TryValidatePrintSeqRange(seqStart, seqEnd, isNormalPrintTab, out var rangeError))
+            {
+                SnackbarHelper.Show(rangeError, Severity.Warning);
+                return;
+            }
+
+            var barcodes = BuildHskBarcodeList(_data, date, seqStart, seqEnd, isReprint);
+            foreach (var code in barcodes)
+            {
+                if (code.Length != 20)
+                {
+                    SnackbarHelper.Show($"条码长度异常（{code.Length}）", Severity.Error);
+                    return;
+                }
+            }
+
+            await PrintHskLabelsAsync(
+                date,
+                barcodes,
+                seqStart,
+                seqEnd,
+                isReprint,
+                useMultiColumn: true,
+                persistBarcodes: true,
+                saveSeqHistory: true,
+                lockStartAfterNormalPrint: !isReprint,
+                isManualReprint: false,
+                isSequenceReprint: isReprint && IsReprintMode);
+        }
+        finally
+        {
+            await EndPrintingUiAsync();
+        }
+    }
+
+    HskBarcodeSaveContext BuildBarcodeSaveContext(string code, bool isManualReprint, bool isSequenceReprint)
+    {
+        if (isManualReprint)
+        {
+            return new HskBarcodeSaveContext
+            {
+                CodeValue = code,
+                IsManualReprint = true,
+                ReprintUserId = ReprintAccount.Trim(),
+                ReprintReason = ReprintReason,
+                ResponsiblePerson = ResponsiblePerson
+            };
+        }
+
+        return new HskBarcodeSaveContext
+        {
+            CodeValue = code,
+            ProductionOrderNo = _data?.GetString("orderNo") ?? "",
+            SalesOrderNo = _data is null ? "" : ResolveSalesOrderForBarcode(_data),
+            ProductCode = _data?.GetString("materialCode") ?? "",
+            ProductName = _data?.GetString("materialName") ?? "",
+            ProductModel = _data?.GetString("materialModel_zh") ?? "",
+            ProductionOrderSum = _data?.GetString("orderQuantity") ?? "",
+            ScLineText = SelectedProductionLine,
+            ScLineCode = MapProductionLineToCode(SelectedProductionLine),
+            IsSequenceReprint = isSequenceReprint,
+            ReprintUserId = ReprintAccount.Trim(),
+            ReprintReason = ReprintReason,
+            ResponsiblePerson = ResponsiblePerson
+        };
+    }
+
+    async Task PersistBarcodesBeforePrintAsync(
+        IReadOnlyList<string> barcodes,
+        bool isManualReprint,
+        bool isSequenceReprint)
+    {
+        if (_hskBll is null)
+            throw new InvalidOperationException("未配置 HskCode 数据库连接");
+
+        var factory4000 = BLLHSKCode.IsFactory4000(SelectedFactory);
+        var totalSteps = barcodes.Count + 2;
+
+        for (var i = 0; i < barcodes.Count; i++)
+        {
+            var code = barcodes[i];
+            var ctx = BuildBarcodeSaveContext(code, isManualReprint, isSequenceReprint);
+            await Task.Run(() => _hskBll.SaveBarcodeRecord(ctx, factory4000));
+
+            if (ShouldRefreshPrintProgress(i, barcodes.Count))
+            {
+                await SetPrintProgressAsync(
+                    i + 1,
+                    totalSteps,
+                    $"正在写入标签记录 {i + 1} / {barcodes.Count}");
+            }
+        }
+
+        await SetPrintProgressAsync(barcodes.Count + 1, totalSteps, "正在清空 main 打印队列…");
+        await Task.Run(() => _hskBll.ClearMainTable());
+
+        AppendLog($"已生成打印记录 {barcodes.Count} 条并清除 main 旧任务");
+    }
+
+    int ResolveOrderQuantityMax()
+    {
+        var qtyRaw = _data?.GetString("orderQuantity");
+        if (double.TryParse(qtyRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var qty)
+            || double.TryParse(qtyRaw, NumberStyles.Any, CultureInfo.CurrentCulture, out qty))
+        {
+            return (int)Math.Max(0, Math.Floor(qty));
+        }
+
+        return 0;
+    }
+
+    async Task PrintHskLabelsAsync(
+        DateTime date,
+        IReadOnlyList<string> barcodes,
+        int seqStart,
+        int seqEnd,
+        bool isReprint,
+        bool useMultiColumn,
+        bool persistBarcodes,
+        bool saveSeqHistory,
+        bool lockStartAfterNormalPrint,
+        bool isManualReprint = false,
+        bool isSequenceReprint = false,
+        bool forcePaper37x10 = false)
+    {
+        try
+        {
+            var totalSteps = persistBarcodes ? barcodes.Count + 2 : Math.Max(barcodes.Count, 1) + 1;
+
+            if (persistBarcodes)
+                await PersistBarcodesBeforePrintAsync(barcodes, isManualReprint, isSequenceReprint);
+            else if (_hskBll is not null)
+            {
+                await SetPrintProgressAsync(0, 1, "正在清空 main 打印队列…");
+                await Task.Run(() => _hskBll.ClearMainTable());
+                AppendLog("已清除 main 旧打印任务");
+            }
+
+            var paperLabel = forcePaper37x10 ? "37*10" : HskPaperSpec;
+
+            if (useMultiColumn && _data is not null && barcodes.Count > 0)
+            {
+                var pattern = BuildHskBarcodePattern(_data, date, isReprint);
+                var layout = CreateHskMultiColumnLayout(pattern, seqStart, barcodes.Count, forcePaper37x10);
+                await SetPrintProgressAsync(
+                    totalSteps - 1,
+                    totalSteps,
+                    $"正在提交打印任务（共 {barcodes.Count} 条条码，LocalAgent 生成中）…");
+                AppendLog(
+                    $"发送打印（一次任务）：{SelectedPrinter}，{paperLabel}，GapMm={layout.GapMm}，序号 {seqStart}～{seqEnd}，共 {barcodes.Count} 条条码");
+                await PrinterHelper.PrintLayoutAsync(JS, layout);
+            }
+            else
+            {
+                for (var i = 0; i < barcodes.Count; i++)
+                {
+                    var code = barcodes[i];
+                    if (ShouldRefreshPrintProgress(i, barcodes.Count))
+                    {
+                        await SetPrintProgressAsync(
+                            i + 1,
+                            barcodes.Count,
+                            $"正在提交第 {i + 1} / {barcodes.Count} 个标签…");
+                    }
+
+                    var layout = CreateHskFixedCodeLayout(code, forcePaper37x10);
+                    AppendLog($"发送打印：{SelectedPrinter}，{paperLabel} → {code}");
+                    await PrinterHelper.PrintLayoutAsync(JS, layout);
+                }
+            }
+
+            await SetPrintProgressAsync(totalSteps, totalSteps, "正在保存打印机设置…");
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "TrayLabel_printer");
+
+            if (saveSeqHistory && seqEnd > 0)
+                await TrySavePrintSeqHistoryAsync(seqEnd);
+
+            if (lockStartAfterNormalPrint)
+                ResetPrintSeqEndToOrderQty();
+
+            await SetPrintProgressAsync(totalSteps, totalSteps, "打印任务已提交");
+
+            var sheetHint = useMultiColumn
+                ? $"一次打印任务，{barcodes.Count} 条条码（多列排版）"
+                : $"{barcodes.Count} 次打印";
+            AppendLog($"打印提交成功，{sheetHint}。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+    }
+
+    async Task TrySavePrintSeqHistoryAsync(int printedSeq)
+    {
+        var productionNo = _data?.GetString("orderNo")?.Trim();
+        if (_hskBll is null || string.IsNullOrWhiteSpace(productionNo))
+            return;
+
+        try
+        {
+            if (printedSeq > _printSeqStartSpare)
+            {
+                var rows = await Task.Run(() => _hskBll.AddPrintHistoryEnd(productionNo, printedSeq));
+                if (rows <= 0)
+                {
+                    AppendLog("警告：打印序号写入数据库失败，请检查 HskCode 连接。");
+                    return;
+                }
+
+                PrintSeqStart = (printedSeq + 1).ToString(CultureInfo.InvariantCulture);
+                AppendLog($"已保存打印序号 {printedSeq} 至 hskcode_print_history_count，下次起始：{PrintSeqStart}");
+            }
+            else
+            {
+                PrintSeqStart = _printSeqStartSpare.ToString(CultureInfo.InvariantCulture);
+                AppendLog($"序号 {printedSeq} 未超过查单时起始值 {_printSeqStartSpare}，未更新历史表（补打规则）。");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"保存打印序号失败：{ex.Message}");
+            SnackbarHelper.Show($"打印成功，但序号未写入数据库：{ex.Message}", Severity.Warning);
+        }
+    }
+
+}

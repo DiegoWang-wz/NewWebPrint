@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral,
+            PublicKeyToken=b77a5c561934e089
+        </value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral,
+            PublicKeyToken=b77a5c561934e089
+        </value>
+    </resheader>
+    <data name="SwitchLanguage" xml:space="preserve">
+    <value>切换语言</value>
+  </data>
+    <data name="ProductLabel" xml:space="preserve">
+    <value>生产入库</value>
+  </data>
+    <data name="PurchaseLabel" xml:space="preserve">
+    <value>采购收货</value>
+  </data>
+    <data name="MaterialLabel" xml:space="preserve">
+    <value>物料打印</value>
+  </data>
+    <data name="DeliveryOrder" xml:space="preserve">
+    <value>交货订单</value>
+  </data>
+    <data name="SaleOrder" xml:space="preserve">
+    <value>销单库存</value>
+  </data>
+    <data name="Search" xml:space="preserve">
+    <value>查询</value>
+  </data>
+    <data name="Print" xml:space="preserve">
+    <value>打印</value>
+  </data>
+    <data name="Searching" xml:space="preserve">
+    <value>查询中...</value>
+  </data>
+    <data name="Printing" xml:space="preserve">
+    <value>打印中...</value>
+  </data>
+    <data name="Generating" xml:space="preserve">
+    <value>生成中...</value>
+  </data>
+    <data name="PreviewQrCode" xml:space="preserve">
+    <value>预览二维码</value>
+  </data>
+    <data name="SelectPrinter" xml:space="preserve">
+    <value>选择打印机</value>
+  </data>
+    <data name="ProductionOrder" xml:space="preserve">
+    <value>生产订单号</value>
+  </data>
+    <data name="PleaseInput" xml:space="preserve">
+    <value>请输入</value>
+  </data>
+    <data name="Confirm" xml:space="preserve">
+    <value>确认</value>
+  </data>
+    <data name="Clear" xml:space="preserve">
+    <value>清空</value>
+  </data>
+    <data name="Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+    <data name="Back" xml:space="preserve">
+    <value>回退</value>
+  </data>
+    <data name="Remark" xml:space="preserve">
+    <value>备注</value>
+  </data>
+    <data name="ReportWork" xml:space="preserve">
+    <value>报工</value>
+  </data>
+    <data name="Factory" xml:space="preserve">
+    <value>工厂</value>
+  </data>
+    <data name="Workshop" xml:space="preserve">
+    <value>车间</value>
+  </data>
+    <!-- 追加：单据与物料字段 -->
+    <data name="Order" xml:space="preserve"><value>订单号</value></data>
+    <data name="OrderLine" xml:space="preserve"><value>行号</value></data>
+    <data name="OrderDelivery" xml:space="preserve"><value>订单交期</value></data>
+
+    <data name="MaterialGroup" xml:space="preserve"><value>物料组</value></data>
+    <data name="MaterialCode" xml:space="preserve"><value>物料代码</value></data>
+    <data name="MaterialName" xml:space="preserve"><value>物料名称</value></data>
+    <data name="MaterialModel" xml:space="preserve"><value>规格型号</value></data>
+
+    <data name="OrderQuantity" xml:space="preserve"><value>订单数量</value></data>
+    <data name="SalesNo" xml:space="preserve"><value>销售订单号</value></data>
+    <data name="SalesLineNo" xml:space="preserve"><value>销售订单行号</value></data>
+    <data name="unReportNum" xml:space="preserve"><value>未清数量</value></data>
+
+    <!-- 追加：交货订单相关（用于“交货订单”Tab） -->
+    <data name="DeliveryNo" xml:space="preserve"><value>交货订单号</value></data>
+    <data name="DeliverylineNo" xml:space="preserve"><value>交货订单行</value></data>
+
+    <!-- 追加：生产入库相关 -->
+    <data name="DGLTP" xml:space="preserve"><value>生产交期</value></data>
+
+    <!-- 追加：库存字段 -->
+    <data name="LABST" xml:space="preserve"><value>库存</value></data>
+    <data name="CHARG" xml:space="preserve"><value>批次</value></data>
+    <data name="LGORT" xml:space="preserve"><value>库存地点</value></data>
+    <data name="ZEIVR" xml:space="preserve"><value>版本</value></data>
+    <data name="NonData" xml:space="preserve">
+      <value>暂无数据</value>
+    </data>
+    <data name="InHereOutPutMsg" xml:space="preserve">
+      <value>在此输出信息</value>
+    </data>
+    <data name="Number" xml:space="preserve">
+      <value>数量</value>
+    </data>
+    <data name="TwoLanguagePrint" xml:space="preserve">
+      <value>双语打印</value>
+    </data>
+    <data name="Rotate90" xml:space="preserve">
+      <value>旋转90°</value>
+    </data>
+    <data name="RemarkOrderNum" xml:space="preserve">
+      <value>备注订单数量</value>
+    </data>
+    <data name="Weighing" xml:space="preserve">
+      <value>称重</value>
+    </data>
+    <data name="MarkedWeight" xml:space="preserve">
+      <value>标重</value>
+    </data>
+    <data name="Tolerance" xml:space="preserve">
+      <value>公差</value>
+    </data>
+    <data name="Size" xml:space="preserve">
+      <value>尺寸</value>
+    </data>
+    <data name="Setting" xml:space="preserve">
+      <value>设置</value>
+    </data>
+    <data name="Special" xml:space="preserve">
+      <value>特殊</value>
+    </data>
+    <data name="QrCode" xml:space="preserve">
+      <value>二维码</value>
+    </data>
+    <data name="Sum" xml:space="preserve">
+      <value>合计</value>
+    </data>
+    <data name="BoxNum" xml:space="preserve">
+      <value>每箱或每托数量</value>
+    </data>
+    <data name="Default" xml:space="preserve">
+      <value>默认</value>
+    </data>
+    <data name="Qualified" xml:space="preserve">
+      <value>合格</value>
+    </data>
+    <data name="Non" xml:space="preserve">
+      <value>无</value>
+    </data>
+    <data name="PurchaseLineNo" xml:space="preserve">
+      <value>采购订单行号</value>
+    </data>
+    <data name="PurchaseNo" xml:space="preserve">
+      <value>采购订单号</value>
+    </data>
+    <data name="MaterialNo" xml:space="preserve">
+      <value>物料号</value>
+    </data>
+    <data name="Inventory" xml:space="preserve">
+      <value>库存</value>
+    </data>
+    <data name="MysExclusive" xml:space="preserve">
+      <value>马来专属</value>
+    </data>
+    <data name="MysExclusive2" xml:space="preserve">
+      <value>马来电子料纸箱</value>
+    </data>
+    <data name="CustomBatchNo" xml:space="preserve">
+      <value>自定义批次号</value>
+    </data>
+    <data name="UserId" xml:space="preserve">
+      <value>工号</value>
+    </data>
+    <data name="Supplier" xml:space="preserve">
+      <value>供应商</value>
+    </data>
+    <data name="Order&amp;Row" xml:space="preserve">
+      <value>订单&amp;行</value>
+    </data>
+    <data name="SaleNo&amp;Row" xml:space="preserve">
+      <value>销单&amp;行</value>
+    </data>
+    <data name="Material" xml:space="preserve">
+      <value>物料</value>
+    </data>
+    <data name="MaterialDes." xml:space="preserve">
+      <value>物料描述</value>
+    </data>
+    <data name="Model" xml:space="preserve">
+      <value>规格型号</value>
+    </data>
+    <data name="Quantity" xml:space="preserve">
+      <value>数量</value>
+    </data>
+    <data name="TotalQuantity" xml:space="preserve">
+      <value>总数量</value>
+    </data>
+    <data name="UnQualified" xml:space="preserve">
+      <value>不合格</value>
+    </data>
+    <data name="SpecialMa" xml:space="preserve">
+      <value>特采</value>
+    </data>
+    <data name="HskOrderDetailTitle" xml:space="preserve">
+      <value>订单详情</value>
+    </data>
+    <data name="HskOrderDetail_ColOrderNo" xml:space="preserve">
+      <value>生产订单</value>
+    </data>
+    <data name="HskOrderDetail_ColSalesOrder" xml:space="preserve">
+      <value>销售订单</value>
+    </data>
+    <data name="HskOrderDetail_ColMaterialCode" xml:space="preserve">
+      <value>物料代码</value>
+    </data>
+    <data name="HskOrderDetail_ColMaterialName" xml:space="preserve">
+      <value>物料名称</value>
+    </data>
+    <data name="HskOrderDetail_ColSpec" xml:space="preserve">
+      <value>规格型号</value>
+    </data>
+    <data name="HskOrderDetail_ColOrderQty" xml:space="preserve">
+      <value>订单数量</value>
+    </data>
+    <data name="HskOrderDetail_NoData" xml:space="preserve">
+      <value>无数据</value>
+    </data>
+    <data name="HskPrintLogNotSent" xml:space="preserve">
+      <value>未发送打印：打印模板尚未接入。</value>
+    </data>
+    <data name="HskPrintLayoutNotReady" xml:space="preserve">
+      <value>打印模板尚未接入，请配置新布局后再试。</value>
+    </data>
+    <data name="DateLabel" xml:space="preserve">
+      <value>日期</value>
+    </data>
+    <data name="HskPaperSpecLabel" xml:space="preserve">
+      <value>标签规格</value>
+    </data>
+</root>
