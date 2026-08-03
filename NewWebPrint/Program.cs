@@ -12,6 +12,7 @@ using MudBlazor.Services;
 using NewWebPrint.Components;
 using NewWebPrint.DbContexts;
 using NewWebPrint.Services;
+using NewWebPrint.Services.Hu;
 using NewWebPrint.Services.Ld40Binding;
 using NewWebPrint.Services.SapEwm;
 using NewWebPrint.Utilities;
@@ -57,6 +58,16 @@ builder.Services.AddHttpClient<SapEwmService>(client =>
     client.Timeout = TimeSpan.FromSeconds(20);
 });
 builder.Services.AddScoped<ISapEwmService>(sp => sp.GetRequiredService<SapEwmService>());
+builder.Services.AddHttpClient(nameof(HuLabelService), client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    // 内网 HU API 直连；避免被本机代理（如 127.0.0.1:7897）劫持导致“连接被拒绝”
+    UseProxy = false,
+    Proxy = null
+});
+builder.Services.AddScoped<IHuLabelService, HuLabelService>();
 
 var app = builder.Build();
 var serialPortLocks = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);

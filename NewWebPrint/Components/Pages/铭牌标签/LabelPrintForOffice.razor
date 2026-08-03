@@ -1,4 +1,4 @@
-﻿@page "/LabelPrintForOffice"
+@page "/LabelPrintForOffice"
 @rendermode InteractiveServer
 @inject SnackbarHelper SnackbarHelper
 @inject LocalAgentPrinterBootstrap PrinterBootstrap
@@ -53,16 +53,7 @@
                     </MudStack>
                 </MudItem>
                 <MudItem xs="12">
-                    <MudPaper Class="pa-2" Style="height:100%;">
-                        <MudText Typo="Typo.subtitle2" Class="mb-1">@T["InHereOutPutMsg"]</MudText>
-                        <MudTextField Value="@PrintMessages"
-                                      ReadOnly="true"
-                                      Lines="12"
-                                      Variant="Variant.Outlined"
-                                      Placeholder="@T["InHereOutPutMsg"]"
-                                      Class="font-monospace"
-                                      Style="width:100%; height:100%;"/>
-                    </MudPaper>
+                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
                 </MudItem>
             </MudGrid>
         </MudTabPanel>

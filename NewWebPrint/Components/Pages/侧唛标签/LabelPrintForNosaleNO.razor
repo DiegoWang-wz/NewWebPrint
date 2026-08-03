@@ -1,0 +1,912 @@
+@page "/LabelPrintForNosaleNO"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject LocalStorageHelper LocalStorage
+@using System.Globalization
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="8">
+                <MudStack Spacing="2">
+                    <MudTextField @bind-Value="SideMarkText"
+                                  Label="侧唛描述"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Lines="6"
+                                  Immediate="true"
+                                  @bind-Value:after="OnSideMarkAfter"/>
+                    <MudGrid GutterSize="2">
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudNumericField @bind-Value="Qty"
+                                             Label="产品数量"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="1"
+                                             Disabled="@(IsBlankMode || IsCustomMode)"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudNumericField @bind-Value="FontSizePt"
+                                             Label="字号"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="1"
+                                             Max="72"/>
+                        </MudItem>
+                        <MudItem xs="12" md="6" Class="d-flex align-center flex-wrap gap-2">
+                            <MudCheckBox T="bool"
+                                         Value="IsBlankMode"
+                                         ValueChanged="OnBlankModeChanged"
+                                         Label="空白模式"
+                                         Dense="true"
+                                         Color="Color.Primary"/>
+                            <MudCheckBox T="bool"
+                                         Value="IsCustomMode"
+                                         ValueChanged="OnCustomModeChanged"
+                                         Label="自定义模式"
+                                         Dense="true"
+                                         Color="Color.Primary"/>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudGrid GutterSize="2">
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="UserId"
+                                          Label="工号"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Immediate="true"
+                                          @bind-Value:after="OnUserIdAfter"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="WeightStandard"
+                                          Label="标重 (KG)"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Immediate="true"
+                                          Disabled="@(!CanEditWeightParams)"
+                                          @bind-Value:after="OnWeightStandardAfter"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="WeightTolerance"
+                                          Label="公差 (KG)"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Immediate="true"
+                                          Disabled="@(!CanEditWeightParams)"
+                                          @bind-Value:after="OnWeightToleranceAfter"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudTextField @bind-Value="WeightActual"
+                                          Label="实际称重 (KG)"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Disabled="true"/>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                       OnClick="EnableWeight"
+                                       FullWidth="true"
+                                       Style="height:48px;">
+                                @(_isSerialOpen ? "断开称重器" : "开启称重")
+                            </MudButton>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4" Class="d-flex align-center">
+                            <MudCheckBox T="bool"
+                                         Value="AutoPrintEnabled"
+                                         ValueChanged="OnAutoPrintChanged"
+                                         Label="自动打印"
+                                         Dense="true"
+                                         Color="Color.Primary"
+                                         Disabled="@(!_isSerialOpen)"/>
+                        </MudItem>
+                        <MudItem xs="12" md="4" Class="d-flex align-center">
+                            <MudText Typo="Typo.body2"
+                                     Style="@($"font-weight:700;color:{GetWeightStatusColor()}")">
+                                @GetWeightStatusText()
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudStack Spacing="2" Class="h-100" Justify="Justify.Center">
+                    <MudSelect T="string"
+                               Label="@T["SelectPrinter"]"
+                               @bind-Value="SelectedPrinter"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Print"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               FullWidth="true">
+                        @foreach (var p in Printers)
+                        {
+                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudNumericField @bind-Value="PrintCount"
+                                     Label="打印数量"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="@(IsWeightOutOfTolerance() ? Color.Error : Color.Success)"
+                               OnClick="PrintSubmit"
+                               Disabled="@IsPrinting"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Style="height:56px; font-size:1.1rem; font-weight:600">
+                        @(IsPrinting ? T["Printing"] : T["Print"])
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudStack>
+
+@code {
+    /// <summary>按用户提供的 100×80 blocks 模板。</summary>
+    const float PaperWidthMm = 100f;
+    const float PaperHeightMm = 80f;
+    const string PrinterStorageKey = "LabelPrintForNosaleNO_printer";
+    const string WeightEditUserId = "100267";
+
+    const int NosaleAutoPrintCooldownMs = 1200;
+    const double NosaleResetWeightThresholdKg = 0.5d;
+    const double NosaleStableToleranceKg = 0.02d;
+    const int NosaleStableDurationMs = 1000;
+
+    List<string> Printers { get; set; } = new();
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+
+    string SideMarkText { get; set; } = string.Empty;
+    int Qty { get; set; } = 1;
+    int FontSizePt { get; set; } = 14;
+    int PrintCount { get; set; } = 1;
+    bool IsBlankMode { get; set; }
+    bool IsCustomMode { get; set; }
+
+    string UserId { get; set; } = string.Empty;
+    string WeightStandard { get; set; } = string.Empty;
+    string WeightTolerance { get; set; } = string.Empty;
+    string WeightActual { get; set; } = string.Empty;
+    bool AutoPrintEnabled { get; set; }
+
+    bool _isSerialOpen;
+    bool _hasWeightData;
+    bool _autoPrinting;
+    bool _resetPending;
+    bool _settingsLoaded;
+    DotNetObjectReference<LabelPrintForNosaleNO>? _objRef;
+    System.Threading.Timer? _autoPrintTimer;
+    DateTime? _stableWeightSinceUtc;
+    double? _stableWeightCandidateKg;
+    double? _lastWeightKg;
+    DateTime _lastAutoPrintUtc = DateTime.MinValue;
+
+    string ModeLabel => IsCustomMode ? "自定义" : IsBlankMode ? "空白" : "标准";
+    bool CanEditWeightParams => string.Equals(UserId?.Trim(), WeightEditUserId, StringComparison.Ordinal);
+    bool RequireWeightInputs => _isSerialOpen && _hasWeightData;
+
+    protected override void OnInitialized()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        _autoPrintTimer = new System.Threading.Timer(AutoPrintTimerCallback, null, Timeout.Infinite, Timeout.Infinite);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_settingsLoaded)
+        {
+            _settingsLoaded = true;
+            WeightStandard = await LocalStorage.GetStringAsync(StorageKeys.NosaleWeightStandard) ?? "";
+            WeightTolerance = await LocalStorage.GetStringAsync(StorageKeys.NosaleWeightTolerance) ?? "";
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    void ResetAutoPrintState(bool keepResetPending = false)
+    {
+        _autoPrintTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        _stableWeightSinceUtc = null;
+        _stableWeightCandidateKg = null;
+        if (!keepResetPending)
+            _resetPending = false;
+    }
+
+    Task OnSideMarkAfter()
+    {
+        ResetAutoPrintState(_resetPending);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>空白与自定义互斥，避免同时勾选造成误解（打印时自定义仍优先）。</summary>
+    Task OnBlankModeChanged(bool value)
+    {
+        IsBlankMode = value;
+        if (value)
+            IsCustomMode = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    Task OnCustomModeChanged(bool value)
+    {
+        IsCustomMode = value;
+        if (value)
+            IsBlankMode = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    Task OnUserIdAfter()
+    {
+        ResetAutoPrintState(_resetPending);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    async Task OnWeightStandardAfter()
+    {
+        ResetAutoPrintState(_resetPending);
+        await LocalStorage.SetAsync(StorageKeys.NosaleWeightStandard, WeightStandard?.Trim() ?? "");
+    }
+
+    async Task OnWeightToleranceAfter()
+    {
+        ResetAutoPrintState(_resetPending);
+        await LocalStorage.SetAsync(StorageKeys.NosaleWeightTolerance, WeightTolerance?.Trim() ?? "");
+    }
+
+    async Task OnAutoPrintChanged(bool enabled)
+    {
+        if (enabled)
+        {
+            if (!TryValidate(out var error, forAutoPrint: true))
+            {
+                AutoPrintEnabled = false;
+                SnackbarHelper.Show(error, Severity.Warning);
+                return;
+            }
+
+            AutoPrintEnabled = true;
+            ResetAutoPrintState();
+            AppendLog("自动打印已开启。");
+        }
+        else
+        {
+            AutoPrintEnabled = false;
+            ResetAutoPrintState();
+            AppendLog("自动打印已关闭。");
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task EnableWeight()
+    {
+        try
+        {
+            if (_isSerialOpen)
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+                _isSerialOpen = false;
+                _hasWeightData = false;
+                WeightActual = "";
+                AutoPrintEnabled = false;
+                ResetAutoPrintState();
+                SnackbarHelper.Show("称重器已停止", Severity.Info);
+                AppendLog("WebSerial 称重连接已关闭");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var baud = await JS.InvokeAsync<string>("serialInterop.getPreferredScaleBaud");
+            var br = int.TryParse(baud, out var n) ? n : 19200;
+            var config = new
+            {
+                baudRate = baud,
+                parity = "none",
+                dataBits = "8",
+                stopBits = "1",
+                autoScaleBaud = br is 9600 or 19200
+            };
+            var success = await JS.InvokeAsync<bool>("serialInterop.openPort", config, _objRef);
+            if (!success)
+            {
+                SnackbarHelper.Show("称重器连接失败或已取消", Severity.Error);
+                AppendLog("WebSerial 称重连接失败或已取消");
+                return;
+            }
+
+            _isSerialOpen = true;
+            SnackbarHelper.Show("称重器连接成功", Severity.Success);
+            AppendLog("WebSerial 称重连接成功");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"称重器连接异常: {ex.Message}", Severity.Error);
+            AppendLog($"称重器连接异常: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReceiveData(string data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+        WeightActual = data.Trim();
+        _hasWeightData = true;
+        if (TryParseWeightKg(WeightActual, out var kg))
+            _lastWeightKg = kg;
+        TryAutoPrintAfterWeight();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnError(string errorMessage)
+    {
+        _isSerialOpen = false;
+        _hasWeightData = false;
+        AutoPrintEnabled = false;
+        ResetAutoPrintState();
+        AppendLog($"串口错误: {errorMessage}");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static bool TryParseWeightKg(string? text, out double weightKg)
+    {
+        weightKg = 0d;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return double.TryParse(text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out weightKg)
+               || double.TryParse(text.Trim(), NumberStyles.Any, CultureInfo.CurrentCulture, out weightKg);
+    }
+
+    bool IsWeightOutOfTolerance()
+    {
+        if (!RequireWeightInputs) return false;
+        if (!TryParseWeightKg(WeightActual, out var actual)) return false;
+        if (!TryParseWeightKg(WeightStandard, out var standard)) return false;
+        if (!TryParseWeightKg(WeightTolerance, out var tolerance)) return false;
+        return Math.Abs(actual - standard) > Math.Abs(tolerance);
+    }
+
+    string GetWeightStatusText()
+    {
+        if (!_isSerialOpen) return "未连接称重器";
+        if (!_hasWeightData) return "等待称重数据";
+        return IsWeightOutOfTolerance() ? "重量超出公差范围" : "重量正常";
+    }
+
+    string GetWeightStatusColor()
+    {
+        if (!_isSerialOpen) return "#757575";
+        if (!_hasWeightData) return "#ef6c00";
+        return IsWeightOutOfTolerance() ? "#c62828" : "#1b5e20";
+    }
+
+    bool TryValidate(out string error, bool forAutoPrint = false)
+    {
+        error = string.Empty;
+
+        if (RequireWeightInputs)
+        {
+            if (string.IsNullOrWhiteSpace(UserId))
+            {
+                error = "请先填写操作人工号";
+                return false;
+            }
+
+            if (!TryParseWeightKg(WeightStandard, out _))
+            {
+                error = "请先填写正确的标重";
+                return false;
+            }
+
+            if (!TryParseWeightKg(WeightTolerance, out _))
+            {
+                error = "请先填写正确的公差";
+                return false;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(SideMarkText))
+        {
+            error = "请先填写侧唛描述";
+            return false;
+        }
+
+        if (!IsBlankMode && !IsCustomMode && Qty < 1)
+        {
+            error = "产品数量须大于 0";
+            return false;
+        }
+
+        if (FontSizePt < 1)
+        {
+            error = "字号格式不正确";
+            return false;
+        }
+
+        if (PrintCount < 1)
+        {
+            error = "打印数量无效";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            error = "请先选择打印机";
+            return false;
+        }
+
+        if (!forAutoPrint && RequireWeightInputs && IsWeightOutOfTolerance())
+        {
+            error = "重量超出公差范围，请检查";
+            return false;
+        }
+
+        return true;
+    }
+
+    void TryAutoPrintAfterWeight()
+    {
+        if (!AutoPrintEnabled || !_isSerialOpen || _autoPrinting || IsPrinting)
+        {
+            ResetAutoPrintState(_resetPending);
+            return;
+        }
+
+        if (!TryValidate(out string _, forAutoPrint: true))
+        {
+            ResetAutoPrintState(_resetPending);
+            return;
+        }
+
+        if (!TryParseWeightKg(WeightActual, out var currentWeightKg))
+        {
+            ResetAutoPrintState(_resetPending);
+            return;
+        }
+
+        if (_resetPending)
+        {
+            if (currentWeightKg < NosaleResetWeightThresholdKg)
+            {
+                _resetPending = false;
+                ResetAutoPrintState();
+                AppendLog("自动打印已复位，等待下一次上货称重。");
+            }
+
+            return;
+        }
+
+        if (currentWeightKg <= 0d || IsWeightOutOfTolerance())
+        {
+            ResetAutoPrintState(_resetPending);
+            return;
+        }
+
+        if ((DateTime.UtcNow - _lastAutoPrintUtc).TotalMilliseconds < NosaleAutoPrintCooldownMs)
+            return;
+
+        if (!_stableWeightCandidateKg.HasValue
+            || Math.Abs(currentWeightKg - _stableWeightCandidateKg.Value) > NosaleStableToleranceKg)
+        {
+            _stableWeightCandidateKg = currentWeightKg;
+            _stableWeightSinceUtc = DateTime.UtcNow;
+        }
+        else if (!_stableWeightSinceUtc.HasValue)
+        {
+            _stableWeightSinceUtc = DateTime.UtcNow;
+        }
+
+        _autoPrintTimer?.Change(200, 200);
+    }
+
+    void AutoPrintTimerCallback(object? _)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (_autoPrinting || IsPrinting || !AutoPrintEnabled || !_isSerialOpen)
+                return;
+
+            if (_resetPending || !_stableWeightSinceUtc.HasValue || !_stableWeightCandidateKg.HasValue
+                || !_lastWeightKg.HasValue)
+                return;
+
+            if (!TryValidate(out string _, forAutoPrint: true) || IsWeightOutOfTolerance())
+            {
+                ResetAutoPrintState(_resetPending);
+                return;
+            }
+
+            if (Math.Abs(_lastWeightKg.Value - _stableWeightCandidateKg.Value) > NosaleStableToleranceKg)
+            {
+                _stableWeightCandidateKg = _lastWeightKg.Value;
+                _stableWeightSinceUtc = DateTime.UtcNow;
+                return;
+            }
+
+            if ((DateTime.UtcNow - _stableWeightSinceUtc.Value).TotalMilliseconds < NosaleStableDurationMs)
+                return;
+
+            try
+            {
+                _autoPrinting = true;
+                AppendLog($"自动打印：重量稳定 1 秒，执行打印。当前重量：{_lastWeightKg.Value:0.000} KG");
+                await PrintSubmitCoreAsync(fromAutoPrint: true);
+            }
+            finally
+            {
+                _autoPrinting = false;
+            }
+        });
+    }
+
+    /// <summary>
+    /// 与 WinForms 一致：自定义优先 → 空白 → 默认。
+    /// 自定义：整框多行居中，不印数量/MADE IN CHINA/工号/重量。
+    /// 空白：整框侧唛（按行数下移），不印数量/MADE IN CHINA，可印工号/重量。
+    /// 默认：三区侧唛+数量+MADE IN CHINA，可印工号/重量。
+    /// </summary>
+    List<PrintBlock> BuildBlocks()
+    {
+        if (IsCustomMode)
+            return BuildCustomBlocks();
+        if (IsBlankMode)
+            return BuildBlankBlocks();
+        return BuildStandardBlocks();
+    }
+
+    /// <summary>WinForms checkBox2：DrawMultiLineText，整区均分居中，无工号重量。</summary>
+    List<PrintBlock> BuildCustomBlocks()
+    {
+        var content = (SideMarkText ?? string.Empty).Replace("\r\n", "\n").TrimEnd();
+        return
+        [
+            OuterFrameBlock(),
+            new PrintBlock
+            {
+                Name = "自定义内容",
+                X = 2f,
+                Y = 2f,
+                Width = 96f,
+                Height = 72f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = content,
+                    FontName = "Arial",
+                    FontSize = FontSizePt,
+                    Bold = false,
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    AutoFit = true,
+                },
+            }
+        ];
+    }
+
+    /// <summary>WinForms checkBox1：无数量区/MADE IN CHINA；侧唛按行数下移；可印工号重量。</summary>
+    List<PrintBlock> BuildBlankBlocks()
+    {
+        var lines = SplitMarkLines(SideMarkText);
+        var j = ResolveBlankStartOffsetRows(lines.Count);
+        // 与 WinForms 行距语义接近：每「下移行」约 5mm
+        var offsetY = j * 5f;
+        var contentY = 2f + offsetY;
+        var contentH = Math.Max(8f, 72f - offsetY);
+
+        var list = new List<PrintBlock>
+        {
+            OuterFrameBlock(),
+            new PrintBlock
+            {
+                Name = "空白侧唛",
+                X = 2f,
+                Y = contentY,
+                Width = 96f,
+                Height = contentH,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = string.Join("\n", lines),
+                    FontName = "SimSun",
+                    FontSize = FontSizePt,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "top",
+                    AutoFit = true,
+                },
+            },
+        };
+        AppendWeightAndUserBlocks(list);
+        return list;
+    }
+
+    /// <summary>默认三区（用户微调后的 100×80 blocks）+ 工号/重量。</summary>
+    List<PrintBlock> BuildStandardBlocks()
+    {
+        var mark = (SideMarkText ?? string.Empty).Replace("\r\n", "\n").Trim();
+        var list = new List<PrintBlock>
+        {
+            OuterFrameBlock(),
+            new PrintBlock
+            {
+                Name = "内容",
+                X = 2f,
+                Y = 2f,
+                Width = 96f,
+                Height = 49f,
+                ShowBorder = true,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                BorderRightMm = 0.2f,
+                BorderBottomMm = 0.2f,
+                BorderLeftMm = 0.2f,
+                DashLengthMm = 2f,
+                DashGapMm = 1f,
+                Text = new TextElement
+                {
+                    Content = mark,
+                    FontName = "Arial",
+                    FontSize = FontSizePt > 0 ? FontSizePt : 14f,
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    AutoFit = true,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "数量",
+                X = 2f,
+                Y = 51f,
+                Width = 96f,
+                Height = 12f,
+                ShowBorder = true,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                BorderRightMm = 0.2f,
+                BorderBottomMm = 0.2f,
+                BorderLeftMm = 0.2f,
+                DashLengthMm = 2f,
+                DashGapMm = 1f,
+                Text = new TextElement
+                {
+                    Content = $"{Qty}    PCS",
+                    FontName = "Arial",
+                    FontSize = 20f,
+                    Align = "center",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "china",
+                X = 2f,
+                Y = 63f,
+                Width = 96f,
+                Height = 11f,
+                ShowBorder = true,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                BorderRightMm = 0.2f,
+                BorderBottomMm = 0.2f,
+                BorderLeftMm = 0.2f,
+                DashLengthMm = 2f,
+                DashGapMm = 1f,
+                Text = new TextElement
+                {
+                    Content = "MADE IN CHINA",
+                    FontName = "Arial",
+                    FontSize = 20f,
+                    Align = "center",
+                    VerticalAlign = "middle",
+                },
+            },
+        };
+        AppendWeightAndUserBlocks(list);
+        return list;
+    }
+
+    static PrintBlock OuterFrameBlock() => new()
+    {
+        Name = "矩形1",
+        X = 2f,
+        Y = 2f,
+        Width = 96f,
+        Height = 72f,
+        ShowBorder = true,
+        BorderStyle = "Solid",
+    };
+
+    /// <summary>WinForms 空白模式：按行数决定起始下移行数 j。</summary>
+    static int ResolveBlankStartOffsetRows(int lineCount) => lineCount switch
+    {
+        1 => 4,
+        2 or 3 => 3,
+        4 or 5 => 2,
+        6 or 7 => 1,
+        _ => 0
+    };
+
+    static List<string> SplitMarkLines(string? text)
+    {
+        var result = new List<string>();
+        foreach (var raw in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n'))
+            result.Add(raw.TrimEnd());
+        if (result.Count == 0)
+            result.Add(string.Empty);
+        return result;
+    }
+
+    /// <summary>WinForms：非自定义模式下，有工号/重量则印在框外底部。</summary>
+    void AppendWeightAndUserBlocks(List<PrintBlock> list)
+    {
+        if (!string.IsNullOrWhiteSpace(UserId))
+        {
+            list.Add(new PrintBlock
+            {
+                Name = "工号",
+                X = 50f,
+                Y = 74f,
+                Width = 25f,
+                Height = 4f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = $"工号：{UserId.Trim()}",
+                    FontName = "Arial",
+                    FontSize = 8f,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(WeightActual))
+        {
+            list.Add(new PrintBlock
+            {
+                Name = "重量",
+                X = 75f,
+                Y = 74f,
+                Width = 23f,
+                Height = 4f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = $"重量：{WeightActual.Trim()}KG",
+                    FontName = "Arial",
+                    FontSize = 8f,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            });
+        }
+    }
+
+    async Task PrintSubmit() => await PrintSubmitCoreAsync(fromAutoPrint: false);
+
+    async Task PrintSubmitCoreAsync(bool fromAutoPrint)
+    {
+        if (IsPrinting && !fromAutoPrint) return;
+        if (!TryValidate(out var error, forAutoPrint: fromAutoPrint))
+        {
+            if (!fromAutoPrint)
+                SnackbarHelper.Show(error, Severity.Warning);
+            return;
+        }
+
+        if (!fromAutoPrint && RequireWeightInputs && IsWeightOutOfTolerance())
+        {
+            SnackbarHelper.Show("重量超出公差范围，请检查", Severity.Error);
+            AppendLog("打印拦截：重量超出公差范围");
+            return;
+        }
+
+        var blocks = BuildBlocks();
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm,
+            PaperHeightMm = PaperHeightMm,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.35f,
+            Blocks = blocks
+        };
+
+        IsPrinting = true;
+        if (TryParseWeightKg(WeightActual, out var kg))
+            AppendLog($"执行打印时重量：{kg:0.000} KG");
+        AppendLog($"发送打印：{SelectedPrinter}，{PaperWidthMm:0.#}×{PaperHeightMm:0.#}，{ModeLabel}，{PrintCount} 张");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+            PrintCount = 1;
+            _lastAutoPrintUtc = DateTime.UtcNow;
+            WeightActual = "";
+            _hasWeightData = false;
+            _lastWeightKg = null;
+            _resetPending = true;
+            ResetAutoPrintState(keepResetPending: true);
+            AppendLog("打印提交成功。");
+            if (!fromAutoPrint)
+                SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            if (!fromAutoPrint)
+                SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ResetAutoPrintState();
+        if (_autoPrintTimer != null)
+        {
+            await _autoPrintTimer.DisposeAsync();
+            _autoPrintTimer = null;
+        }
+
+        if (_isSerialOpen)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        _objRef?.Dispose();
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>

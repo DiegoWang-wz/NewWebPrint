@@ -1,14 +1,13 @@
-﻿@page "/LabelPrintForSideMark"
+@page "/LabelPrintForSideMark"
 @inject SnackbarHelper SnackbarHelper
 @inject LocalAgentPrinterBootstrap PrinterBootstrap
 @using System.Globalization
 @using System.Text.Json
-@using System.Net.Http.Json
 @using Microsoft.JSInterop
 @using NewWebPrint.Models.Api
 @using NewWebPrint.Services.SapEwm
 @using JsonSerializer = System.Text.Json.JsonSerializer
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ISapEwmService SapEwmService
 
 @rendermode InteractiveServer
@@ -17,26 +16,6 @@
          GutterSize="2"
          Justify="Justify.Center"
          AlignItems="AlignItems.Start">
-    @if (_showPortPicker)
-    {
-        <MudOverlay Visible="true" DarkBackground="true" ZIndex="2000">
-            <MudPaper Class="pa-4" Style="width:420px; max-width:90vw;">
-                <MudText Typo="Typo.h6" Class="mb-2">选择称重串口</MudText>
-                <MudText Typo="Typo.caption" Class="mb-2 d-block">请选择本次用于称重的 COM 口</MudText>
-                <MudSelect T="string" Label="COM口" @bind-Value="_backendPortName" Variant="Variant.Outlined" Margin="Margin.Dense">
-                    @foreach (var p in _availableBackendPorts)
-                    {
-                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd" Class="mt-3">
-                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="CancelPortPicker">取消</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmPortPickerAsync">确定并连接</MudButton>
-                </MudStack>
-            </MudPaper>
-        </MudOverlay>
-    }
-
     <MudItem xs="12" xl="12">
         <MudPaper Outlined="true" Class="pa-3 mb-3 section-box">
             <MudGrid Spacing="2" AlignItems="AlignItems.Stretch">
@@ -529,13 +508,6 @@
     {
         _objRef = DotNetObjectReference.Create(this);
     }
-    private CancellationTokenSource? _weightPollCts;
-    private bool _isWeightReading;
-    private string _backendPortName = "COM14";
-    private const int WeightPollIntervalMs = 500;
-    private const int WeightReadTimeoutMs = 1200;
-    private bool _showPortPicker;
-    private List<string> _availableBackendPorts = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -567,158 +539,41 @@
         {
             if (_isSerialOpen)
             {
-                await StopWeightPollingAsync();
+                await JS.InvokeVoidAsync("serialInterop.closePort");
                 _isSerialOpen = false;
                 SnackbarHelper.Show("称重器已停止", Severity.Info);
-                AppendLog("后端称重轮询已停止");
+                AppendLog("WebSerial 称重连接已关闭");
                 await InvokeAsync(StateHasChanged);
                 return;
             }
 
-            await ShowPortPickerAsync();
+            var baud = await JS.InvokeAsync<string>("serialInterop.getPreferredScaleBaud");
+            var br = int.TryParse(baud, out var n) ? n : 19200;
+            var config = new
+            {
+                baudRate = baud,
+                parity = "none",
+                dataBits = "8",
+                stopBits = "1",
+                autoScaleBaud = br is 9600 or 19200
+            };
+            var success = await JS.InvokeAsync<bool>("serialInterop.openPort", config, _objRef);
+            if (!success)
+            {
+                SnackbarHelper.Show("称重器连接失败或已取消", Severity.Error);
+                AppendLog("WebSerial 称重连接失败或已取消");
+                return;
+            }
+
+            _isSerialOpen = true;
+            SnackbarHelper.Show("称重器连接成功", Severity.Success);
+            AppendLog("WebSerial 称重连接成功");
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             SnackbarHelper.Show($"称重器连接异常: {ex.Message}", Severity.Error);
             AppendLog($"称重器连接异常: {ex.Message}");
-        }
-    }
-
-    private void StartWeightPolling()
-    {
-        _weightPollCts?.Cancel();
-        _weightPollCts?.Dispose();
-        _weightPollCts = new CancellationTokenSource();
-        _ = Task.Run(() => PollWeightLoopAsync(_weightPollCts.Token));
-    }
-
-    private async Task StopWeightPollingAsync()
-    {
-        if (_weightPollCts is null) return;
-        try
-        {
-            _weightPollCts.Cancel();
-            await Task.Delay(30);
-        }
-        catch { }
-        finally
-        {
-            _weightPollCts.Dispose();
-            _weightPollCts = null;
-        }
-    }
-
-    private async Task PollWeightLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested && _isSerialOpen)
-        {
-            await ReadWeightByBackendOnceAsync();
-            try
-            {
-                await Task.Delay(WeightPollIntervalMs, ct);
-            }
-            catch (TaskCanceledException)
-            {
-                break;
-            }
-        }
-    }
-
-    private async Task<bool> EnsureBackendComPortAsync()
-    {
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(NavManager.BaseUri) };
-            var resp = await client.GetFromJsonAsync<LocalSerialPortsResponse>("/api/serial/local/ports");
-            var ports = resp?.ports ?? new List<string>();
-            if (ports.Count == 0) return false;
-            _availableBackendPorts = ports;
-            if (!ports.Contains(_backendPortName, StringComparer.OrdinalIgnoreCase))
-                _backendPortName = ports[0];
-            return true;
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"读取本地串口列表失败: {ex.Message}");
-            return false;
-        }
-    }
-
-    private async Task ShowPortPickerAsync()
-    {
-        var ready = await EnsureBackendComPortAsync();
-        if (!ready)
-        {
-            SnackbarHelper.Show("未找到可用串口，请检查设备连接", Severity.Error);
-            return;
-        }
-
-        _showPortPicker = true;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private void CancelPortPicker()
-    {
-        _showPortPicker = false;
-    }
-
-    private async Task ConfirmPortPickerAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_backendPortName))
-        {
-            SnackbarHelper.Show("请先选择串口", Severity.Warning);
-            return;
-        }
-
-        _showPortPicker = false;
-        _isSerialOpen = true;
-        StartWeightPolling();
-        SnackbarHelper.Show($"称重器已连接（后端：{_backendPortName}）", Severity.Success);
-        AppendLog($"后端称重轮询已启动，端口={_backendPortName}，间隔={WeightPollIntervalMs}ms");
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ReadWeightByBackendOnceAsync()
-    {
-        if (_isWeightReading || !_isSerialOpen) return;
-        _isWeightReading = true;
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(NavManager.BaseUri) };
-            var body = new
-            {
-                portName = _backendPortName,
-                baudRate = 19200,
-                parity = "none",
-                dataBits = 8,
-                stopBits = "One",
-                timeoutMs = WeightReadTimeoutMs,
-                dtrEnable = true,
-                rtsEnable = true,
-                newLine = "\r\n"
-            };
-
-            var httpResp = await client.PostAsJsonAsync("/api/serial/local/read-once", body);
-            var result = await httpResp.Content.ReadFromJsonAsync<LocalSerialReadResponse>();
-            if (result?.ok == true)
-            {
-                var weight = (result.weight ?? string.Empty).Trim();
-                if (!string.IsNullOrWhiteSpace(weight))
-                    WeightActual = weight;
-            }
-            else if (!string.IsNullOrWhiteSpace(result?.message) && !result.message.Contains("超时时间内没有读到数据"))
-            {
-                AppendLog($"后端称重读取失败: {result!.message}");
-            }
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"后端称重异常: {ex.Message}");
-        }
-        finally
-        {
-            _isWeightReading = false;
-            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -952,7 +807,6 @@
     {
         if (string.IsNullOrWhiteSpace(data)) return;
         WeightActual = data.Trim();
-        AppendLog($"称重器数据: {WeightActual}");
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1583,26 +1437,21 @@
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _weightPollCts?.Cancel();
-        _weightPollCts?.Dispose();
+        if (_isSerialOpen)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         _objRef?.Dispose();
-    }
-
-    private sealed class LocalSerialPortsResponse
-    {
-        public bool ok { get; set; }
-        public List<string>? ports { get; set; }
-        public string? message { get; set; }
-    }
-
-    private sealed class LocalSerialReadResponse
-    {
-        public bool ok { get; set; }
-        public string? raw { get; set; }
-        public string? weight { get; set; }
-        public string? message { get; set; }
     }
 
 }

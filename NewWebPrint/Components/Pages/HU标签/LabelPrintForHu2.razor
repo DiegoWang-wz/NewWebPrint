@@ -1,0 +1,220 @@
+@page "/LabelPrintForHu2"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="ContentText"
+                              Label="内容（起始编号）"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"
+                              HelperText="空=从 A00001 起；可填 A00005 或 5"
+                              Class="font-monospace"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField @bind-Value="UniqueCount"
+                                 Label="数量"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 Min="1"
+                                 HelperText="唯一条码个数"/>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="string"
+                           Label="@T["SelectPrinter"]"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           OnClick="PrintSubmit"
+                           Disabled="@IsPrinting"
+                           FullWidth="true"
+                           Style="height:40px; font-weight:600">
+                    @(IsPrinting ? T["Printing"] : T["Print"])
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    纸张 70×40 mm · Code128 · 预览 @FirstCode ～ @LastCode · 每码 @CopiesPerCode 张 · 合计 @TotalSheets 张
+                </MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudStack>
+
+@code {
+    /// <summary>对齐 WinForms LabelPrintForHu2：setting_psz(70, 40)。</summary>
+    const float PaperWidthMm = 70f;
+    const float PaperHeightMm = 40f;
+    const int CopiesPerCode = 4;
+    const string PrinterStorageKey = "LabelPrintForHu2_printer";
+    const string CodePattern = "A{index:5}";
+
+    List<string> Printers { get; set; } = new();
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+
+    string ContentText { get; set; } = "";
+    int UniqueCount { get; set; } = 1;
+
+    int StartNum => ParseStartNum(ContentText);
+    int EndNum => StartNum + Math.Max(1, UniqueCount) - 1;
+    string FirstCode => FormatCode(StartNum);
+    string LastCode => FormatCode(EndNum);
+    int TotalSheets => Math.Max(1, UniqueCount) * CopiesPerCode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message) =>
+        PrintMessages = OperationLogHelper.Append(PrintMessages, message);
+
+    /// <summary>对齐 WinForms：空→1；去掉前缀 A 后解析数字。</summary>
+    static int ParseStartNum(string? text)
+    {
+        var startText = (text ?? "").Trim();
+        if (string.IsNullOrEmpty(startText))
+            return 1;
+
+        if (startText.StartsWith("A", StringComparison.OrdinalIgnoreCase))
+            startText = startText[1..];
+
+        return int.TryParse(startText, out var parsed) && parsed > 0 ? parsed : 1;
+    }
+
+    static string FormatCode(int num) => "A" + num.ToString("D5");
+
+    List<PrintBlock> BuildBlocks() =>
+    [
+        // WinForms grid1 + DrawBarCode padding 0.5
+        new PrintBlock
+        {
+            Name = "Barcode",
+            X = 5.29f,
+            Y = 5.85f,
+            Width = 58.63f,
+            Height = 22.56f,
+            ShowBorder = false,
+            Barcode = new BarcodeElement
+            {
+                Value = CodePattern,
+                Format = "CODE_128",
+                SafeMarginMm = 0.5f,
+                ShowTextBelow = false
+            }
+        },
+        // WinForms grid2：Arial Bold 10 居中
+        new PrintBlock
+        {
+            Name = "CodeText",
+            X = 5.29f,
+            Y = 28.41f,
+            Width = 58.63f,
+            Height = 6.41f,
+            ShowBorder = false,
+            Text = new TextElement
+            {
+                Content = CodePattern,
+                FontName = "Arial",
+                FontSize = 10f,
+                Bold = true,
+                Align = "center",
+                VerticalAlign = "middle"
+            }
+        }
+    ];
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (UniqueCount < 1)
+        {
+            SnackbarHelper.Show("数量无效", Severity.Warning);
+            return;
+        }
+
+        var start = StartNum;
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm,
+            PaperHeightMm = PaperHeightMm,
+            Copies = CopiesPerCode,
+            StartValue = start,
+            PrintCount = UniqueCount,
+            BorderThicknessMm = 0.2f,
+            Blocks = BuildBlocks()
+        };
+
+        IsPrinting = true;
+        AppendLog(
+            $"发送打印：{SelectedPrinter}，{PaperWidthMm}×{PaperHeightMm}，{FirstCode}～{LastCode}，每码 {CopiesPerCode} 张，合计 {TotalSheets} 张");
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>

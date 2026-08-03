@@ -710,6 +710,8 @@
         PrintProgressTotal = Math.Max(0, total);
         PrintProgressLabel = label;
         await InvokeAsync(StateHasChanged);
+        // 让进度文案先刷到浏览器，避免随后同步/长任务看起来一直停在「准备打印」
+        await Task.Delay(1);
     }
 
     string GetNormalPrintDisableHint()
@@ -1408,28 +1410,26 @@
             throw new InvalidOperationException("未配置 HskCode 数据库连接");
 
         var factory4000 = BLLHSKCode.IsFactory4000(SelectedFactory);
-        var totalSteps = barcodes.Count + 2;
 
-        for (var i = 0; i < barcodes.Count; i++)
-        {
-            var code = barcodes[i];
-            var ctx = BuildBarcodeSaveContext(code, isManualReprint, isSequenceReprint);
-            await Task.Run(() => _hskBll.SaveBarcodeRecord(ctx, factory4000));
+        // 不再 await TRUNCATE：main 表锁经常导致一直停在「准备打印」、进度条空转
+        _ = Task.Run(() => _hskBll.TryClearMainTable(3));
 
-            if (ShouldRefreshPrintProgress(i, barcodes.Count))
-            {
-                await SetPrintProgressAsync(
-                    i + 1,
-                    totalSteps,
-                    $"正在写入标签记录 {i + 1} / {barcodes.Count}");
-            }
-        }
+        await SetPrintProgressAsync(1, 3, $"正在写入标签历史（{barcodes.Count} 条）…");
+        var contexts = barcodes
+            .Select(code => BuildBarcodeSaveContext(code, isManualReprint, isSequenceReprint))
+            .ToList();
 
-        await SetPrintProgressAsync(barcodes.Count + 1, totalSteps, "正在清空 main 打印队列…");
-        await Task.Run(() => _hskBll.ClearMainTable());
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var batchId = await Task.Run(() => _hskBll.SaveBarcodeRecordsBatch(contexts, factory4000));
+        sw.Stop();
+        _lastPrintBatchId = batchId;
+        _lastPrintBatchCodes = barcodes.ToList();
 
-        AppendLog($"已生成打印记录 {barcodes.Count} 条并清除 main 旧任务");
+        AppendLog($"已写入打印记录 {barcodes.Count} 条（BatchId={batchId}，耗时 {sw.ElapsedMilliseconds} ms）");
     }
+
+    string? _lastPrintBatchId;
+    List<string>? _lastPrintBatchCodes;
 
     int ResolveOrderQuantityMax()
     {
@@ -1457,29 +1457,19 @@
         bool isSequenceReprint = false,
         bool forcePaper37x10 = false)
     {
+        _lastPrintBatchId = null;
+        _lastPrintBatchCodes = null;
         try
         {
-            var totalSteps = persistBarcodes ? barcodes.Count + 2 : Math.Max(barcodes.Count, 1) + 1;
-
-            if (persistBarcodes)
-                await PersistBarcodesBeforePrintAsync(barcodes, isManualReprint, isSequenceReprint);
-            else if (_hskBll is not null)
-            {
-                await SetPrintProgressAsync(0, 1, "正在清空 main 打印队列…");
-                await Task.Run(() => _hskBll.ClearMainTable());
-                AppendLog("已清除 main 旧打印任务");
-            }
-
+            var totalSteps = 3;
             var paperLabel = forcePaper37x10 ? "37*10" : HskPaperSpec;
 
+            // 先提交打印，再写库：避免 TRUNCATE/写 history 锁表时进度条空转、永远出不了标
             if (useMultiColumn && _data is not null && barcodes.Count > 0)
             {
                 var pattern = BuildHskBarcodePattern(_data, date, isReprint);
                 var layout = CreateHskMultiColumnLayout(pattern, seqStart, barcodes.Count, forcePaper37x10);
-                await SetPrintProgressAsync(
-                    totalSteps - 1,
-                    totalSteps,
-                    $"正在提交打印任务（共 {barcodes.Count} 条条码，LocalAgent 生成中）…");
+                await SetPrintProgressAsync(1, totalSteps, $"正在提交 LocalAgent（{barcodes.Count} 条）…");
                 AppendLog(
                     $"发送打印（一次任务）：{SelectedPrinter}，{paperLabel}，GapMm={layout.GapMm}，序号 {seqStart}～{seqEnd}，共 {barcodes.Count} 条条码");
                 await PrinterHelper.PrintLayoutAsync(JS, layout);
@@ -1503,6 +1493,25 @@
                 }
             }
 
+            if (persistBarcodes)
+            {
+                await SetPrintProgressAsync(2, totalSteps, $"打印已提交，正在写入标签历史（{barcodes.Count} 条）…");
+                try
+                {
+                    await PersistBarcodesBeforePrintAsync(barcodes, isManualReprint, isSequenceReprint);
+                    _ = MarkLastPrintBatchStatusAsync(BLLHSKCode.PrintStatusPrinted);
+                }
+                catch (Exception persistEx)
+                {
+                    AppendLog($"警告：标签已提交打印，但写库失败：{persistEx.Message}");
+                    SnackbarHelper.Show($"打印已提交，但写库失败：{persistEx.Message}", Severity.Warning);
+                }
+            }
+            else if (_hskBll is not null)
+            {
+                _ = Task.Run(() => _hskBll.TryClearMainTable(3));
+            }
+
             await SetPrintProgressAsync(totalSteps, totalSteps, "正在保存打印机设置…");
             await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "TrayLabel_printer");
 
@@ -1522,8 +1531,28 @@
         }
         catch (Exception ex)
         {
+            _ = MarkLastPrintBatchStatusAsync(BLLHSKCode.PrintStatusFailed);
             AppendLog($"异常：{ex.Message}");
             SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+    }
+
+    async Task MarkLastPrintBatchStatusAsync(string status)
+    {
+        if (_hskBll is null || string.IsNullOrWhiteSpace(_lastPrintBatchId) || _lastPrintBatchCodes is null
+            || _lastPrintBatchCodes.Count == 0)
+            return;
+
+        try
+        {
+            var batchId = _lastPrintBatchId;
+            var codes = _lastPrintBatchCodes;
+            await Task.Run(() => _hskBll.SetPrintStatus(batchId, codes, status));
+            AppendLog($"打印状态已更新为 {status}（BatchId={batchId}，{codes.Count} 条）");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"警告：打印状态回写失败（{status}）：{ex.Message}");
         }
     }
 

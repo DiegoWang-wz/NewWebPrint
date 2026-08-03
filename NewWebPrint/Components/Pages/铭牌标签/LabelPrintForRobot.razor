@@ -1,0 +1,378 @@
+@page "/LabelPrintForRobot"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">SN 编码（物料/部件）</MudText>
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="MaterialNo"
+                              Label="料号信息（10 或 11 位）"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              MaxLength="11"
+                              Immediate="true"
+                              HelperText="示例：YBCDJ00115"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudTextField @bind-Value="MaterialVersion"
+                              Label="料号版本号"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              MaxLength="1"
+                              Immediate="true"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudTextField @bind-Value="SupplierCode"
+                              Label="供应商首字母"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              MaxLength="1"
+                              Immediate="true"/>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker Label="日期（自动生成日期代码）"
+                               Editable="true"
+                               @bind-Date="SelectedDate"
+                               DateFormat="yyyy-MM-dd"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Immediate="true"/>
+            </MudItem>
+
+            <MudItem xs="12" md="2">
+                <MudTextField Value="@YearCode"
+                              Label="年（2 位）"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudTextField Value="@MonthCode"
+                              Label="月代码"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"
+                              HelperText="@($"数值 {SelectedDate?.Month ?? 0:D2}")"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudTextField Value="@DayCode"
+                              Label="日代码"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"
+                              HelperText="@($"数值 {SelectedDate?.Day ?? 0:D2}")"/>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField Value="@SnPreview"
+                              Label="SN 预览（前缀 + 流水号）"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"
+                              Class="font-monospace"/>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudSelect T="string"
+                           Label="@T["SelectPrinter"]"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField @bind-Value="StartValue"
+                                 Label="流水号起始"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 Min="1"
+                                 Max="9999"/>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField @bind-Value="PrintCount"
+                                 Label="打印数量"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 Min="1"
+                                 Max="9999"/>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        流水号：@StartValue.ToString("D4")～@EndSerial.ToString("D4")
+                    </MudText>
+                    <MudSpacer/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="PrintSubmit"
+                               Disabled="@IsPrinting"
+                               Size="Size.Large"
+                               Style="height:56px; font-size:1.1rem; font-weight:600; min-width:140px">
+                        @(IsPrinting ? T["Printing"] : T["Print"])
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudStack>
+
+@code {
+    /// <summary>标签尺寸按 blocks 占位估算（文本宽 28+边距，二维码底边约 11.5），后续可再调。</summary>
+    const float PaperWidthMm = 30f;
+    const float PaperHeightMm = 12f;
+    const string PrinterStorageKey = "LabelPrintForRobot_printer";
+
+    /// <summary>00–31 → 字符，跳过 I/O/V/Z。</summary>
+    static readonly char[] Base32Map =
+    [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+        'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'W',
+        'X', 'Y'
+    ];
+
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+
+    string MaterialNo { get; set; } = "YBCDJ00115";
+    string MaterialVersion { get; set; } = "1";
+    string SupplierCode { get; set; } = "J";
+    DateTime? SelectedDate { get; set; } = DateTime.Today;
+    int StartValue { get; set; } = 1;
+    int PrintCount { get; set; } = 1;
+
+    string YearCode => SelectedDate is { } d
+        ? (d.Year % 100).ToString("D2")
+        : "--";
+
+    string MonthCode => SelectedDate is { } d
+        ? EncodeBase32(d.Month)
+        : "-";
+
+    string DayCode => SelectedDate is { } d
+        ? EncodeBase32(d.Day)
+        : "-";
+
+    string DateCode => $"{YearCode}{MonthCode}{DayCode}";
+
+    string SnPrefix
+    {
+        get
+        {
+            var mat = (MaterialNo ?? string.Empty).Trim().ToUpperInvariant();
+            var ver = (MaterialVersion ?? string.Empty).Trim().ToUpperInvariant();
+            var sup = (SupplierCode ?? string.Empty).Trim().ToUpperInvariant();
+            return $"{mat}{ver}{sup}{DateCode}";
+        }
+    }
+
+    string SnPattern => $"{SnPrefix}{{index:4}}";
+
+    string SnPreview => $"{SnPrefix}{StartValue:D4}" +
+                        (PrintCount > 1 ? $" ～ {SnPrefix}{EndSerial:D4}" : string.Empty);
+
+    int EndSerial => Math.Clamp(StartValue + Math.Max(PrintCount, 1) - 1, 1, 9999);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    static string EncodeBase32(int value)
+    {
+        if (value < 0 || value > 31)
+            return "?";
+        return Base32Map[value].ToString();
+    }
+
+    bool TryValidateSn(out string error)
+    {
+        error = string.Empty;
+        var mat = (MaterialNo ?? string.Empty).Trim();
+        if (mat.Length is not (10 or 11))
+        {
+            error = "料号信息须为 10 或 11 位";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(MaterialVersion) || MaterialVersion.Trim().Length != 1)
+        {
+            error = "料号版本号须为 1 位";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(SupplierCode) || SupplierCode.Trim().Length != 1)
+        {
+            error = "供应商首字母须为 1 位";
+            return false;
+        }
+
+        if (SelectedDate is null)
+        {
+            error = "请选择日期";
+            return false;
+        }
+
+        if (SelectedDate.Value.Day is < 1 or > 31)
+        {
+            error = "日期无效";
+            return false;
+        }
+
+        if (StartValue < 1 || StartValue > 9999)
+        {
+            error = "流水号起始须在 0001～9999";
+            return false;
+        }
+
+        if (PrintCount < 1)
+        {
+            error = "打印数量无效";
+            return false;
+        }
+
+        if (StartValue + PrintCount - 1 > 9999)
+        {
+            error = "流水号超出 9999，请减少打印数量或调整起始值";
+            return false;
+        }
+
+        return true;
+    }
+
+    List<PrintBlock> BuildBlocks(string snPattern) =>
+    [
+        new PrintBlock
+        {
+            Name = "文本1",
+            X = 1f,
+            Y = 1f,
+            Width = 28f,
+            Height = 4f,
+            ShowBorder = false,
+            Text = new TextElement
+            {
+                Content = snPattern,
+                FontName = "Arial",
+                FontSize = 6f,
+                Bold = true,
+                Align = "center",
+                VerticalAlign = "middle",
+            },
+        },
+        new PrintBlock
+        {
+            Name = "二维码1",
+            X = 10.5f,
+            Y = 4f,
+            Width = 8.5f,
+            Height = 7.5f,
+            ShowBorder = false,
+            Qr = new QrElement
+            {
+                Value = snPattern,
+                ErrorCorrection = "M",
+                SafeMarginMm = 0.1f,
+                DigitFontSizePt = 6f,
+                DigitOffsetYMm = 0f,
+            },
+        }
+    ];
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (!TryValidateSn(out var error))
+        {
+            SnackbarHelper.Show(error, Severity.Warning);
+            return;
+        }
+
+        var pattern = SnPattern;
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm,
+            PaperHeightMm = PaperHeightMm,
+            Copies = 1,
+            StartValue = StartValue,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0f,
+            Blocks = BuildBlocks(pattern)
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}，{PaperWidthMm}×{PaperHeightMm}，{pattern} × {PrintCount} 张（{StartValue:D4}～{EndSerial:D4}）");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>

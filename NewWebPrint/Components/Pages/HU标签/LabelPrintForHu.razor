@@ -1,0 +1,472 @@
+@page "/LabelPrintForHu"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject IHuLabelService HuLabelService
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Models.Hu
+@using NewWebPrint.Services.Hu
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="InboundDelivery"
+                              Label="交货单号"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="PurchaseOrder"
+                              Label="采购订单"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="SearchSubmit"
+                           Disabled="@IsSearching"
+                           FullWidth="true"
+                           Style="height:48px;">
+                    @(IsSearching ? "查询中…" : "查询")
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-2 tab-background" Elevation="2">
+        @if (IsSearching)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2"/>
+        }
+        <MudTable Items="@Items"
+                  T="HuDataItem"
+                  Dense="true"
+                  Hover="true"
+                  FixedHeader="true"
+                  Height="220px"
+                  OnRowClick="OnRowClick"
+                  RowClassFunc="@SelectedRowClass">
+            <HeaderContent>
+                <MudTh>交货单</MudTh>
+                <MudTh>行项</MudTh>
+                <MudTh>供应商</MudTh>
+                <MudTh>采购订单</MudTh>
+                <MudTh>PO行</MudTh>
+                <MudTh>工厂</MudTh>
+                <MudTh>物料</MudTh>
+                <MudTh>描述</MudTh>
+                <MudTh>数量</MudTh>
+                <MudTh>单位</MudTh>
+                <MudTh>批次</MudTh>
+                <MudTh>库位</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.VBELN</MudTd>
+                <MudTd>@context.POSNR</MudTd>
+                <MudTd>@context.LIFNR</MudTd>
+                <MudTd>@context.EBELN</MudTd>
+                <MudTd>@context.EBELP</MudTd>
+                <MudTd>@context.WERKS</MudTd>
+                <MudTd>@context.MATNR</MudTd>
+                <MudTd>@context.MAKTX</MudTd>
+                <MudTd>@context.LFIMG</MudTd>
+                <MudTd>@context.MEINS</MudTd>
+                <MudTd>@context.CHARG</MudTd>
+                <MudTd>@context.LGORT</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">暂无数据</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 tab-background" Elevation="2">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="BoxQty"
+                              Label="本箱数量"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Adornment="Adornment.End"
+                              AdornmentText="@UnitText"/>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="BatchNo"
+                              Label="批次"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"/>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudNumericField @bind-Value="PrintCount"
+                                 Label="标签张数"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 Min="1"/>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string"
+                           Label="@T["SelectPrinter"]"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudTextField Value="@QrPreview"
+                              Label="二维码内容"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"
+                              Class="font-monospace"/>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-end gap-2">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Info"
+                           OnClick="OpenPreview"
+                           Disabled="@(SelectedItem is null)"
+                           FullWidth="true"
+                           Style="height:40px; font-weight:600">
+                    预览标签
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           OnClick="PrintSubmit"
+                           Disabled="@(IsPrinting || SelectedItem is null)"
+                           FullWidth="true"
+                           Style="height:40px; font-weight:600">
+                    @(IsPrinting ? T["Printing"] : T["Print"])
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="220"/>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudStack>
+
+@code {
+    const float PaperWidthMm = 100f;
+    const float PaperHeightMm = 80f;
+    const string PrinterStorageKey = "LabelPrintForHu_printer";
+
+    List<string> Printers { get; set; } = new();
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    bool IsSearching { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+
+    string InboundDelivery { get; set; } = "";
+    string PurchaseOrder { get; set; } = "";
+    List<HuDataItem> Items { get; set; } = new();
+    HuDataItem? SelectedItem { get; set; }
+
+    string BoxQty { get; set; } = "";
+    string BatchNo { get; set; } = "";
+    string UnitText { get; set; } = "";
+    int PrintCount { get; set; } = 1;
+
+    string QrPreview => SelectedItem is null
+        ? ""
+        : BuildQrValue(SelectedItem, BoxQty, BatchNo);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    string SelectedRowClass(HuDataItem item, int index) =>
+        ReferenceEquals(item, SelectedItem) ? "mud-theme-primary" : "";
+
+    async Task SearchSubmit()
+    {
+        if (IsSearching) return;
+        if (string.IsNullOrWhiteSpace(InboundDelivery) && string.IsNullOrWhiteSpace(PurchaseOrder))
+        {
+            SnackbarHelper.Show("请输入交货单号或采购订单", Severity.Warning);
+            return;
+        }
+
+        IsSearching = true;
+        SelectedItem = null;
+        Items = [];
+        BoxQty = "";
+        BatchNo = "";
+        UnitText = "";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var (ok, message, items) = await HuLabelService.QueryAsync(InboundDelivery, PurchaseOrder);
+            AppendLog(message);
+            if (!ok)
+            {
+                SnackbarHelper.Show(message, Severity.Warning);
+                return;
+            }
+
+            Items = items;
+            SnackbarHelper.Show(message, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"查询异常：{ex.Message}");
+            SnackbarHelper.Show($"查询异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void OnRowClick(TableRowClickEventArgs<HuDataItem> args)
+    {
+        SelectedItem = args.Item;
+        if (SelectedItem is null) return;
+        BoxQty = SelectedItem.LFIMG?.Trim() ?? "";
+        BatchNo = SelectedItem.CHARG?.Trim() ?? "";
+        UnitText = SelectedItem.MEINS?.Trim() ?? "";
+        AppendLog($"已选择：{SelectedItem.MATNR} / {SelectedItem.EBELN}-{SelectedItem.EBELP}");
+    }
+
+    async Task OpenPreview()
+    {
+        if (SelectedItem is null)
+        {
+            SnackbarHelper.Show("请先选择订单行", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(BoxQty))
+        {
+            SnackbarHelper.Show("请输入此箱数量", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters<HuLabelPreviewDialog>
+        {
+            { x => x.Item, SelectedItem },
+            { x => x.BoxQty, BoxQty ?? "" },
+            { x => x.BatchNo, BatchNo ?? "" },
+            { x => x.UnitText, UnitText ?? "" }
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+        await DialogService.ShowAsync<HuLabelPreviewDialog>("标签预览", parameters, options);
+    }
+
+    static string BuildQrValue(HuDataItem item, string qty, string batch)
+    {
+        const string huValue = "00";
+        return $"{item.EBELN}/{item.EBELP}/{item.MATNR}/{qty}/{qty}/{huValue}/{item.VBELV}/{item.POSNV}/BATCH/{batch}";
+    }
+
+    List<PrintBlock> BuildBlocks(HuDataItem item)
+    {
+        const float xL = 2f;
+        const float wL = 25f;
+        const float xV1 = 27f;
+        const float wV1 = 23f;
+        const float xV2 = 50f;
+        const float wV2 = 23f;
+        const float xQr = 73f;
+        const float wQr = 25f;
+        const float rowH = 6f;
+        const float y1 = 2f;
+        const float y2 = 8f;
+        const float y3 = 14f;
+        const float y4 = 20f;
+        const float y5 = 26f;
+        const float y6 = 32f;
+        const float y7 = 42f;
+        const float y8 = 56f;
+        const float y9 = 64f;
+        const float y10 = 70f;
+        const float fontSize = 10f;
+
+        PrintBlock Cell(string name, float x, float y, float w, float h, string content) =>
+            new()
+            {
+                Name = name,
+                X = x,
+                Y = y,
+                Width = w,
+                Height = h,
+                ShowBorder = true,
+                Text = new TextElement
+                {
+                    Content = content ?? "",
+                    FontName = "Times New Roman",
+                    FontSize = fontSize,
+                    Bold = false,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                    AutoFit = true
+                }
+            };
+
+        var qtyText = string.IsNullOrWhiteSpace(UnitText)
+            ? (BoxQty ?? "")
+            : $"{BoxQty} {UnitText}".Trim();
+        var qr = BuildQrValue(item, BoxQty ?? "", BatchNo ?? "");
+
+        return
+        [
+            Cell("Supplier L", xL, y1, wL, rowH, "Supplier"),
+            Cell("Supplier V", xV1, y1, wV1 + wV2, rowH, item.LIFNR),
+            Cell("Supplier TR", xQr, y1, wQr, rowH, ""),
+
+            Cell("Pur L", xL, y2, wL, rowH, "Pur.order/Item"),
+            Cell("Pur PO", xV1, y2, wV1, rowH, item.EBELN),
+            Cell("Pur Item", xV2, y2, wV2, rowH, item.EBELP),
+
+            Cell("Sal L", xL, y3, wL, rowH, "Sal.order/Item"),
+            Cell("Sal No", xV1, y3, wV1, rowH, item.VBELV),
+            // WinForms 销售行项刻意留空
+            Cell("Sal Item", xV2, y3, wV2, rowH, ""),
+
+            Cell("Mat L", xL, y4, wL, rowH, "Mat./Batch"),
+            Cell("Mat No", xV1, y4, wV1, rowH, item.MATNR),
+            Cell("Batch", xV2, y4, wV2, rowH, BatchNo),
+
+            Cell("Plant L", xL, y5, wL, rowH, "Plant/SLoc"),
+            Cell("Plant", xV1, y5, wV1, rowH, item.WERKS),
+            Cell("SLoc", xV2, y5, wV2, rowH, item.LGORT),
+
+            new PrintBlock
+            {
+                Name = "QR",
+                X = xQr,
+                Y = y2,
+                Width = wQr,
+                Height = y6 - y2,
+                ShowBorder = true,
+                Qr = new QrElement
+                {
+                    Value = qr,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8",
+                    SafeMarginMm = 0.5f
+                }
+            },
+
+            Cell("Desc L", xL, y6, wL, y7 - y6, "Mat.Description"),
+            Cell("Desc V", xV1, y6, wV1 + wV2 + wQr, y7 - y6, item.MAKTX),
+
+            Cell("Spec L", xL, y7, wL, y8 - y7, "Specification"),
+            Cell("Spec V", xV1, y7, wV1 + wV2 + wQr, y8 - y7, item.ZCTEXT),
+
+            Cell("Qty L", xL, y8, wL, rowH + 2, "Qty/Pallet"),
+            Cell("Qty V", xV1, y8, 20f, rowH + 2, qtyText),
+            Cell("MPQ L", 47f, y8, 26f, rowH + 2, "MPQ"),
+            Cell("MPQ V", 73f, y8, wQr, rowH + 2, item.MQP),
+
+            Cell("Date L", xL, y9, wL, rowH, "Printing Date"),
+            Cell("Date V", xV1, y9, wV1 + wV2 + wQr, rowH, DateTime.Now.ToString("yyyy-MM-dd")),
+
+            Cell("Remark L", xL, y10, wL, rowH, "remark"),
+            Cell("Remark V", xV1, y10, wV1 + wV2 + wQr, rowH, item.IDNLF)
+        ];
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (SelectedItem is null)
+        {
+            SnackbarHelper.Show("请先选择订单行", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(BoxQty))
+        {
+            SnackbarHelper.Show("请输入此箱数量", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("标签张数无效", Severity.Warning);
+            return;
+        }
+
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm,
+            PaperHeightMm = PaperHeightMm,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            BorderThicknessMm = 0.3f,
+            Blocks = BuildBlocks(SelectedItem)
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}，{PaperWidthMm}×{PaperHeightMm}，{PrintCount} 张，QR={QrPreview}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>

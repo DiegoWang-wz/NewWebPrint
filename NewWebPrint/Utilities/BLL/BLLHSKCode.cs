@@ -1,5 +1,6 @@
 ﻿using System.Data;
 using System.Text;
+using System.Threading;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Oracle.ManagedDataAccess.Client;
@@ -51,6 +52,28 @@ public class BLLHSKCode : BLLBase
     }
 
     public void ClearMainTable() => hskCodeStorage.ExecuteSQL("TRUNCATE TABLE main");
+
+    /// <summary>
+    /// 尽力清空 main。TRUNCATE 需要表锁，被占用时会一直等到超时，不可在打印关键路径无限等待。
+    /// </summary>
+    public bool TryClearMainTable(int timeoutSeconds = 3)
+    {
+        try
+        {
+            using var conn = new SqlConnection(hskCodeStorage.ConnectionString);
+            conn.Open();
+            using var cmd = new SqlCommand("TRUNCATE TABLE main", conn)
+            {
+                CommandTimeout = Math.Clamp(timeoutSeconds, 1, 30)
+            };
+            cmd.ExecuteNonQuery();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public DataTable? GetPrintNumHistory(string productionNo)
     {
@@ -109,6 +132,238 @@ public class BLLHSKCode : BLLBase
         }
 
         return 0;
+    }
+
+    public const string PrintStatusPending = "Pending";
+    public const string PrintStatusPrinted = "Printed";
+    public const string PrintStatusFailed = "Failed";
+
+    static int _printStatusTableReady; // 0=未确认, 1=已确认存在
+
+    /// <summary>
+    /// 批量写入标签历史（单连接、一次/少次往返）。
+    /// 不写 main：打印前会 TRUNCATE main，写入 main 再清空纯属浪费，且 BulkCopy 锁表更慢。
+    /// 打印状态表异步尽力写入，失败不影响出标。
+    /// </summary>
+    public string SaveBarcodeRecordsBatch(IReadOnlyList<HskBarcodeSaveContext> items, bool factoryIs4000)
+    {
+        if (items is null || items.Count == 0)
+            throw new ArgumentException("批量入库条码列表不能为空", nameof(items));
+
+        var batchId = Guid.NewGuid().ToString("N");
+        var historyRows = new List<(string[] Column, string[] Value)>(items.Count);
+        var ledgerRows = new List<(string[] Column, string[] Value)>();
+
+        foreach (var ctx in items)
+        {
+            BuildBarcodeRowSets(ctx, out var cols, out var vals, out var ledgerColumn, out var ledgerValue);
+
+            if (ctx.IsManualReprint || ctx.IsSequenceReprint)
+                ledgerRows.Add((ledgerColumn!, ledgerValue!));
+
+            historyRows.Add((cols, vals));
+        }
+
+        if (factoryIs4000)
+        {
+            if (_myCodeStorage is null)
+                throw new InvalidOperationException("未配置 ConnectionStrings:MYCode");
+
+            if (ledgerRows.Count > 0)
+                ExecuteBatchedInserts(hskCodeStorage.ConnectionString, "main_RePrint_Ledger", ledgerRows);
+
+            ExecuteBatchedInserts(_myCodeStorage.ConnectionString, "main_history", historyRows);
+        }
+        else
+        {
+            using var conn = new SqlConnection(hskCodeStorage.ConnectionString);
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                if (ledgerRows.Count > 0)
+                    ExecuteBatchedInserts(conn, tx, "main_RePrint_Ledger", ledgerRows);
+                ExecuteBatchedInserts(conn, tx, "main_history", historyRows);
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
+        }
+
+        // 不在入库路径写 Pending：状态只在打印结束后回写，避免多一次库往返挡出标
+        return batchId;
+    }
+
+    public void SetPrintStatus(string batchId, IReadOnlyList<string> codes, string status)
+    {
+        if (string.IsNullOrWhiteSpace(batchId) || codes is null || codes.Count == 0)
+            return;
+
+        var connStr = hskCodeStorage.ConnectionString;
+        EnsurePrintStatusTable(connStr);
+
+        string[] cols = ["BatchId", "Codevalue", "PrintStatus"];
+        var rows = new List<(string[] Column, string[] Value)>(codes.Count);
+        foreach (var code in codes)
+            rows.Add((cols, [batchId, code, status]));
+
+        ExecuteBatchedInserts(connStr, "dbo.hsk_label_print_status", rows);
+    }
+
+    static void BuildBarcodeRowSets(
+        HskBarcodeSaveContext ctx,
+        out string[] mainOrHistoryColumn,
+        out string[] mainOrHistoryValue,
+        out string[]? ledgerColumn,
+        out string[]? ledgerValue)
+    {
+        var scLine = ctx.IsManualReprint || ctx.IsSequenceReprint ? "补打" : ctx.ScLineText;
+        var scLineCode = ctx.IsManualReprint || ctx.IsSequenceReprint ? "补打" : ctx.ScLineCode;
+        ledgerColumn = null;
+        ledgerValue = null;
+
+        if (ctx.IsManualReprint)
+        {
+            mainOrHistoryColumn =
+            [
+                "Codevalue", "Production_order_no", "sales_order_no", "pruduct_code", "product_name",
+                "product_model", "Production_order_sum", "Production_order_6no", "SCLine", "SCLineCode"
+            ];
+            mainOrHistoryValue = [ctx.CodeValue, "", "", "", "", "", "", "", "补打", "补打"];
+        }
+        else
+        {
+            mainOrHistoryColumn =
+            [
+                "Codevalue", "Production_order_no", "sales_order_no", "pruduct_code", "product_name",
+                "product_model", "Production_order_sum", "Production_order_6no", "SCLine", "SCLineCode", "syn_flag"
+            ];
+            mainOrHistoryValue =
+            [
+                ctx.CodeValue,
+                ctx.ProductionOrderNo,
+                ctx.SalesOrderNo,
+                ctx.ProductCode,
+                ctx.ProductName,
+                ctx.ProductModel,
+                ctx.ProductionOrderSum,
+                ctx.ProductionOrderNo,
+                scLine,
+                scLineCode,
+                "0"
+            ];
+        }
+
+        if (ctx.IsManualReprint || ctx.IsSequenceReprint)
+        {
+            ledgerColumn =
+            [
+                "Codevalue", "Production_order_no", "sales_order_no", "pruduct_code", "product_name",
+                "product_model", "Production_order_sum", "Production_order_6no", "SCLine", "SCLineCode",
+                "userid", "reason", "responsible_person"
+            ];
+            ledgerValue =
+            [
+                ctx.CodeValue,
+                ctx.IsManualReprint ? "" : ctx.ProductionOrderNo,
+                ctx.IsManualReprint ? "" : ctx.SalesOrderNo,
+                ctx.IsManualReprint ? "" : ctx.ProductCode,
+                ctx.IsManualReprint ? "" : ctx.ProductName,
+                ctx.IsManualReprint ? "" : ctx.ProductModel,
+                ctx.IsManualReprint ? "" : ctx.ProductionOrderSum,
+                ctx.IsManualReprint ? "" : ctx.ProductionOrderNo,
+                "补打",
+                "补打",
+                ctx.ReprintUserId ?? "",
+                ctx.ReprintReason ?? "",
+                ctx.ResponsiblePerson ?? ""
+            ];
+        }
+    }
+
+    static void ExecuteBatchedInserts(
+        string connectionString,
+        string tableName,
+        List<(string[] Column, string[] Value)> rows)
+    {
+        if (rows.Count == 0) return;
+        using var conn = new SqlConnection(connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            ExecuteBatchedInserts(conn, tx, tableName, rows);
+            tx.Commit();
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 用与 AddRecord 相同的 INSERT 语法，多条拼成一批执行（一次往返），避免 SqlBulkCopy 元数据/锁开销。
+    /// </summary>
+    static void ExecuteBatchedInserts(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tableName,
+        List<(string[] Column, string[] Value)> rows)
+    {
+        if (rows.Count == 0) return;
+
+        const int chunkSize = 80;
+        for (var offset = 0; offset < rows.Count; offset += chunkSize)
+        {
+            var count = Math.Min(chunkSize, rows.Count - offset);
+            var sb = new StringBuilder(count * 180);
+            for (var i = 0; i < count; i++)
+            {
+                var row = rows[offset + i];
+                sb.Append("INSERT INTO ").Append(tableName).Append(" (")
+                    .Append(string.Join(",", row.Column))
+                    .Append(") VALUES (");
+                for (var c = 0; c < row.Value.Length; c++)
+                {
+                    if (c > 0) sb.Append(',');
+                    sb.Append('\'').Append(EscapeSqlLiteral(row.Value[c] ?? "")).Append('\'');
+                }
+
+                sb.Append(");");
+            }
+
+            using var cmd = new SqlCommand(sb.ToString(), conn, tx);
+            cmd.CommandTimeout = 30;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    static void EnsurePrintStatusTable(string connectionString)
+    {
+        if (Interlocked.CompareExchange(ref _printStatusTableReady, 0, 0) == 1)
+            return;
+
+        using var conn = new SqlConnection(connectionString);
+        conn.Open();
+        const string sql =
+            @"IF OBJECT_ID(N'dbo.hsk_label_print_status', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.hsk_label_print_status
+    (
+        BatchId     nvarchar(64)  NOT NULL,
+        Codevalue   nvarchar(64)  NOT NULL,
+        PrintStatus nvarchar(20)  NOT NULL,
+        UpdatedAt   datetime2     NOT NULL CONSTRAINT DF_hsk_label_print_status_UpdatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_hsk_label_print_status PRIMARY KEY (BatchId, Codevalue)
+    );
+END";
+        using var cmd = new SqlCommand(sql, conn);
+        cmd.ExecuteNonQuery();
+        Interlocked.Exchange(ref _printStatusTableReady, 1);
     }
 
     public void SaveBarcodeRecord(HskBarcodeSaveContext ctx, bool factoryIs4000)

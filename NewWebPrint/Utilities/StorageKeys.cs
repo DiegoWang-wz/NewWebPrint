@@ -46,4 +46,17 @@ public static class StorageKeys
 
     /// <summary>纸张规格：37*10 或 44*16。</summary>
     public const string LabelPrintForHskPaperSpec = "labelPrintForHsk.paperSpec";
+
+    // ----- LabelPrintForNosaleNO（样品侧唛）-----
+    public const string NosaleWeightStandard = "labelNosale.bz";
+    public const string NosaleWeightTolerance = "labelNosale.gc";
+
+    // ----- LabelPrintForJY（居优 AM 床架标签）-----
+    /// <summary>AM-床架右标签起始流水（奇数）。</summary>
+    public const string LabelPrintForJyStartSeqRight = "labelPrintForJy.startSeqRight";
+    /// <summary>AM-床架左标签起始流水（偶数）。</summary>
+    public const string LabelPrintForJyStartSeqLeft = "labelPrintForJy.startSeqLeft";
+    public const string LabelPrintForJyPoContent = "labelPrintForJy.poContent";
+    public const string LabelPrintForJyPoFontSize = "labelPrintForJy.poFontSize";
+    public const string LabelPrintForJyPoBold = "labelPrintForJy.poBold";
 }

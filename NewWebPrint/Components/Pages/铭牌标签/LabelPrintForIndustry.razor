@@ -1,4 +1,4 @@
-﻿@page "/LabelPrintForIndustry"
+@page "/LabelPrintForIndustry"
 @inject SnackbarHelper SnackbarHelper
 @using System.Globalization
 @using NewWebPrint.Utilities
@@ -1639,6 +1639,8 @@
             GapMm = null,
             BorderThicknessMm = 0.4f,
             IsRotate = false,
+            // 40*25：整体上移 2mm
+            OffsetYMm = PaperSize == "40*25" ? -1.5f : null,
             Blocks = list
         };
 
@@ -2192,6 +2194,7 @@
             GapMm = null,
             BorderThicknessMm = 0.4f,
             IsRotate = false,
+            OffsetYMm = -2f,
             Blocks = BuildInternalBarcodeLabel40x25(pattern)
         };
 
@@ -2410,6 +2413,7 @@
             GapMm = null,
             BorderThicknessMm = 0.4f,
             IsRotate = false,
+            OffsetYMm = -2f,
             Blocks = list
         };
 
@@ -2491,6 +2495,7 @@
             GapMm = null,
             BorderThicknessMm = 0.4f,
             IsRotate = false,
+            OffsetYMm = -2f,
             Blocks = list
         };
 
@@ -2935,11 +2940,12 @@
     static void RemoveFa17AddressBlocks(List<PrintBlock> list)
     {
         list.RemoveAll(b =>
-            string.Equals(b.Name, "address", StringComparison.OrdinalIgnoreCase)
+            (b.Name?.StartsWith("Address", StringComparison.OrdinalIgnoreCase) == true)
             || string.Equals(b.Name, "Block 13", StringComparison.OrdinalIgnoreCase)
             || (b.Text?.Content?.Equals("Address", StringComparison.OrdinalIgnoreCase) == true)
             || (b.Text?.Content?.Contains("PROVINCIALHIGHTECHPARK", StringComparison.OrdinalIgnoreCase) == true)
-            || (b.Text?.Content == ":" && b.X > 15f && b.Y >= 32f));
+            || (b.Text?.Content?.Contains("ZHEJIANG", StringComparison.OrdinalIgnoreCase) == true)
+            || (b.Text?.Content == ":" && b.X >= 14f && b.Y >= 32f));
     }
 
     static void AppendFa17CertIconBlocks(List<PrintBlock> list, string? pic1, string? pic2, string? pic3, string? pic4)
@@ -2986,28 +2992,19 @@
 
     List<PrintBlock> Fa17QrCode55x40()
     {
-        var list = QrCode55x40();
-        RemoveFa17AddressBlocks(list);
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "带RLogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
         var (pic1, pic2, pic3, pic4) = LoadFa17CertImages();
-        AppendFa17CertIconBlocks(list, pic1, pic2, pic3, pic4);
-        return list;
-    }
 
-    List<PrintBlock> BarCode55x40()
-    {
-        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
-        string img = PrinterHelper.ImageFileToBase64(imagePath);
-
-        
         List<PrintBlock> list = new List<PrintBlock>
         {
             new PrintBlock
             {
-                Name = "Block 1",
+                Name = "logo",
                 X = 15f,
                 Y = 4f,
                 Width = 25f,
-                Height = 3f,
+                Height = 4f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
                 Image = new ImageElement
@@ -3022,9 +3019,9 @@
             new PrintBlock
             {
                 Name = "Block 2",
-                X = 3f,
+                X = 1f,
                 Y = 8f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3032,7 +3029,7 @@
                 {
                     Content = "Type ",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3041,9 +3038,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy",
-                X = 3f,
+                X = 1f,
                 Y = 11f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3051,7 +3048,7 @@
                 {
                     Content = "Item No ",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3060,9 +3057,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 14f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3070,7 +3067,7 @@
                 {
                     Content = "Power Rate",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3079,9 +3076,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 17f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3089,7 +3086,7 @@
                 {
                     Content = "Rated.Load",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3098,9 +3095,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 20f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3108,7 +3105,7 @@
                 {
                     Content = "Duty Cycle",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3117,9 +3114,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy_copy_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 23f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3127,7 +3124,7 @@
                 {
                     Content = "Date",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3136,28 +3133,9 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy_copy_copy_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 26f,
-                Width = 13f,
-                Height = 4f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Bar Code",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy_copy_copy",
-                X = 3f,
-                Y = 30f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3165,26 +3143,7 @@
                 {
                     Content = "Serial No",
                     FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
-                X = 3f,
-                Y = 33f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Address",
-                    FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3193,7 +3152,7 @@
             new PrintBlock
             {
                 Name = "Block 11",
-                X = 16f,
+                X = 12f,
                 Y = 8f,
                 Width = 2f,
                 Height = 3f,
@@ -3211,50 +3170,10 @@
             },
             new PrintBlock
             {
-                Name = "barcode",
-                X = 18f,
-                Y = 26f,
-                Width = 32f,
-                Height = 4f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Barcode = new BarcodeElement
-                {
-                    Value = ResolvedSerialNo ?? "",
-                    SafeMarginMm = 0.1f,
-                    Format = "CODE_128",
-                    OffsetXMm = 0f,
-                    ShowTextBelow = false,
-                    DigitFontSizePt = 6f,
-                    DigitBold = false,
-                    DigitOffsetYMm = 0f
-                },
-            },
-            new PrintBlock
-            {
-                Name = "address",
-                X = 18f,
-                Y = 33f,
-                Width = 34f,
-                Height = 5f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "PROVINCIALHIGHTECHPARK，XINCHANGCOUNTY,ZHEJIANG, CHINA.",
-                    FontName = "Arial",
-                    FontSize = 4f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "top"
-                },
-            },
-            new PrintBlock
-            {
                 Name = "serial_no",
-                X = 18f,
-                Y = 30f,
-                Width = 34f,
+                X = 14f,
+                Y = 26f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3262,7 +3181,7 @@
                 {
                     Content = ResolvedSerialNo ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3271,7 +3190,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy",
-                X = 16f,
+                X = 12f,
                 Y = 11f,
                 Width = 2f,
                 Height = 3f,
@@ -3290,7 +3209,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy",
-                X = 16f,
+                X = 12f,
                 Y = 14f,
                 Width = 2f,
                 Height = 3f,
@@ -3309,7 +3228,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy",
-                X = 16f,
+                X = 12f,
                 Y = 17f,
                 Width = 2f,
                 Height = 3f,
@@ -3328,7 +3247,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy",
-                X = 16f,
+                X = 12f,
                 Y = 20f,
                 Width = 2f,
                 Height = 3f,
@@ -3347,7 +3266,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy",
-                X = 16f,
+                X = 12f,
                 Y = 23f,
                 Width = 2f,
                 Height = 3f,
@@ -3365,47 +3284,9 @@
             },
             new PrintBlock
             {
-                Name = "Block 11_copy",
-                X = 16f,
+                Name = "item_no",
+                X = 12f,
                 Y = 26f,
-                Width = 2f,
-                Height = 4f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 30f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 33f,
                 Width = 2f,
                 Height = 3f,
                 ShowBorder = false,
@@ -3423,9 +3304,9 @@
             new PrintBlock
             {
                 Name = "type",
-                X = 18f,
+                X = 14f,
                 Y = 8f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3433,7 +3314,7 @@
                 {
                     Content = PlateType ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3442,9 +3323,9 @@
             new PrintBlock
             {
                 Name = "item_no",
-                X = 18f,
+                X = 14f,
                 Y = 11f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3452,7 +3333,7 @@
                 {
                     Content = PlateItemNo ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3461,9 +3342,9 @@
             new PrintBlock
             {
                 Name = "power_rate",
-                X = 18f,
+                X = 14f,
                 Y = 14f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3471,7 +3352,7 @@
                 {
                     Content = PlatePowerRate ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3480,9 +3361,9 @@
             new PrintBlock
             {
                 Name = "rated_load",
-                X = 18f,
+                X = 14f,
                 Y = 17f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3490,7 +3371,7 @@
                 {
                     Content = PlateRatedLoad ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3499,9 +3380,9 @@
             new PrintBlock
             {
                 Name = "duty_cycle",
-                X = 18f,
+                X = 14f,
                 Y = 20f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3509,7 +3390,7 @@
                 {
                     Content = PlateDutyCycle ?? "",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3518,9 +3399,9 @@
             new PrintBlock
             {
                 Name = "date",
-                X = 18f,
+                X = 14f,
                 Y = 23f,
-                Width = 34f,
+                Width = 38f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -3528,170 +3409,7 @@
                 {
                     Content = FormatPlateDate(),
                     FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            }
-        };
-
-
-        return list;
-    }
-
-    List<PrintBlock> QrCode55x40()
-    {
-        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
-        string img = PrinterHelper.ImageFileToBase64(imagePath);
-        List<PrintBlock> list = new List<PrintBlock>
-        {
-            new PrintBlock
-            {
-                Name = "Block 1",
-                X = 15f,
-                Y = 4f,
-                Width = 25f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Image = new ImageElement
-                {
-                    Base64 = img,
-                    Fit = "contain",
-                    Align = "center",
-                    VerticalAlign = "middle",
-                    Opacity = 1f
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2",
-                X = 3f,
-                Y = 8f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Type ",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy",
-                X = 3f,
-                Y = 11f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Item No ",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy",
-                X = 3f,
-                Y = 14f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Power Rate",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy",
-                X = 3f,
-                Y = 17f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Rated.Load",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy",
-                X = 3f,
-                Y = 20f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Duty Cycle",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy_copy",
-                X = 3f,
-                Y = 23f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Date",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy_copy_copy",
-                X = 3f,
-                Y = 26f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Serial No",
-                    FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -3700,340 +3418,17 @@
             new PrintBlock
             {
                 Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
-                X = 3f,
-                Y = 32f,
-                Width = 13f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "Address",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11",
-                X = 16f,
-                Y = 8f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 13",
-                X = 18f,
-                Y = 32f,
-                Width = 34f,
-                Height = 5f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = "PROVINCIALHIGHTECHPARK，XINCHANGCOUNTY,ZHEJIANG, CHINA.",
-                    FontName = "Arial",
-                    FontSize = 4f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "top"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "serial_no",
-                X = 18f,
-                Y = 26f,
-                Width = 34f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ResolvedSerialNo ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 11f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 14f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 17f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 20f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 23f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "item_no",
-                X = 16f,
-                Y = 26f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 11_copy",
-                X = 16f,
-                Y = 32f,
-                Width = 2f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = ":",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "type",
-                X = 18f,
-                Y = 8f,
-                Width = 20f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = PlateType ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "item_no",
-                X = 18f,
-                Y = 11f,
-                Width = 20f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = PlateItemNo ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "power_rate",
-                X = 18f,
-                Y = 14f,
-                Width = 20f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = PlatePowerRate ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "rated_load",
-                X = 18f,
-                Y = 17f,
-                Width = 20f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = PlateRatedLoad ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "duty_cycle",
-                X = 18f,
-                Y = 20f,
-                Width = 34f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = PlateDutyCycle ?? "",
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "date",
-                X = 18f,
-                Y = 23f,
-                Width = 34f,
-                Height = 3f,
-                ShowBorder = false,
-                BorderStyle = "Solid",
-                Text = new TextElement
-                {
-                    Content = FormatPlateDate(),
-                    FontName = "Arial",
-                    FontSize = 6f,
-                    Bold = true,
-                    Align = "left",
-                    VerticalAlign = "middle"
-                },
-            },
-            new PrintBlock
-            {
-                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
-                X = 3f,
+                X = 1f,
                 Y = 29f,
-                Width = 13f,
+                Width = 12f,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
                 Text = new TextElement
                 {
-                    Content = "QR   Code",
+                    Content = "Address",
                     FontName = "Arial",
-                    FontSize = 6f,
+                    FontSize = 5.5f,
                     Bold = true,
                     Align = "left",
                     VerticalAlign = "middle"
@@ -4042,7 +3437,7 @@
             new PrintBlock
             {
                 Name = "Block 11_copy_copy",
-                X = 16f,
+                X = 12f,
                 Y = 29f,
                 Width = 2f,
                 Height = 3f,
@@ -4061,8 +3456,8 @@
             new PrintBlock
             {
                 Name = "qrcode",
-                X = 38f,
-                Y = 8f,
+                X = 39f,
+                Y = 11f,
                 Width = 14f,
                 Height = 12f,
                 ShowBorder = false,
@@ -4070,18 +3465,1179 @@
                 Qr = new QrElement
                 {
                     Value = ResolvedSerialNo ?? "",
-                    SafeMarginMm = 0.2f,
                     ErrorCorrection = "M",
+                    SafeMarginMm = 1f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
                     Charset = "UTF-8"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Address",
+                X = 14f,
+                Y = 29f,
+                Width = 41f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "PROVINCIALHIGHTECHPARK,XINCHANGCOUNTY,",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Address_copy(1)",
+                X = 14f,
+                Y = 31f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "ZHEJIANG,CHINA.:",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
                 },
             }
         };
+
+        void AddCertIcon(string name, float x, float y, float w, float h, string? b64, string fit)
+        {
+            if (string.IsNullOrEmpty(b64))
+                return;
+            list.Add(new PrintBlock
+            {
+                Name = name,
+                X = x,
+                Y = y,
+                Width = w,
+                Height = h,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = b64,
+                    Fit = fit,
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            });
+        }
+
+        AddCertIcon("img1", 10f, 34f, 5f, 5f, pic1, "contain");
+        AddCertIcon("img2", 20f, 34f, 5f, 5f, pic2, "contain");
+        AddCertIcon("img3", 30f, 34f, 5f, 5f, pic3, "cover");
+        AddCertIcon("img4", 40f, 33.5f, 6f, 6f, pic4, "contain");
+
+        return list;
+    }
+
+    List<PrintBlock> BarCode55x40()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "带RLogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "Block 1",
+                X = 15f,
+                Y = 4f,
+                Width = 25f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 1f,
+                Y = 8f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 1f,
+                Y = 11f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 1f,
+                Y = 14f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 1f,
+                Y = 17f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 1f,
+                Y = 20f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 23f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 26f,
+                Width = 13f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Bar Code",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 30f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 33f,
+                Width = 13f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Address",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11",
+                X = 14f,
+                Y = 8f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "barcode",
+                X = 16f,
+                Y = 26f,
+                Width = 32f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Barcode = new BarcodeElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    SafeMarginMm = 0.1f,
+                    Format = "CODE_128",
+                    OffsetXMm = 0f,
+                    ShowTextBelow = false,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "address",
+                X = 16f,
+                Y = 33f,
+                Width = 37.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "PROVINCIALHIGHTECHPARK,XINCHANGCOUNTY,",
+                    FontName = "Arial",
+                    FontSize = 4f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "top",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 16f,
+                Y = 30f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ResolvedSerialNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 11f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 14f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 17f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 20f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 23f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 26f,
+                Width = 2f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 30f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 14f,
+                Y = 33f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 16f,
+                Y = 8f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateType ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 16f,
+                Y = 11f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateItemNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 16f,
+                Y = 14f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlatePowerRate ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated_load",
+                X = 16f,
+                Y = 17f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateRatedLoad ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 16f,
+                Y = 20f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateDutyCycle ?? "",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 16f,
+                Y = 23f,
+                Width = 37.5f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = FormatPlateDate(),
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "address_copy(1)",
+                X = 16f,
+                Y = 35f,
+                Width = 37.5f,
+                Height = 2f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "ZHEJIANG,CHINA.:",
+                    FontName = "Arial",
+                    FontSize = 4f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "top",
+                },
+            }
+        };
+
+        return list;
+    }
+
+    /// <summary>
+    /// 通用铭牌二维码标签 55*40：布局对齐 FA17 二维码（无底部认证图标），除 logo 外整体下移 2mm。独立 blocks，勿与 Fa17QrCode55x40 合并。
+    /// </summary>
+    List<PrintBlock> QrCode55x40()
+    {
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "带RLogo.png");
+        string img = PrinterHelper.ImageFileToBase64(imagePath);
+
+        // 相对 FA17 二维码：logo 保持 Y=4；其余 Y = FA17.Y + 2；不含底部四认证图标
+        List<PrintBlock> list = new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "logo",
+                X = 15f,
+                Y = 4f,
+                Width = 25f,
+                Height = 4f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = new ImageElement
+                {
+                    Base64 = img,
+                    Fit = "contain",
+                    Align = "center",
+                    VerticalAlign = "middle",
+                    Opacity = 1f
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2",
+                X = 1f,
+                Y = 10f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Type ",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy",
+                X = 1f,
+                Y = 13f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Item No ",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy",
+                X = 1f,
+                Y = 16f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Power Rate",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy",
+                X = 1f,
+                Y = 19f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Rated.Load",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy",
+                X = 1f,
+                Y = 22f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Duty Cycle",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 25f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Date",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 28f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Serial No",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11",
+                X = 12f,
+                Y = 10f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "serial_no",
+                X = 14f,
+                Y = 28f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ResolvedSerialNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 12f,
+                Y = 13f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 12f,
+                Y = 16f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 12f,
+                Y = 19f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 12f,
+                Y = 22f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy",
+                X = 12f,
+                Y = 25f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 12f,
+                Y = 28f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "type",
+                X = 14f,
+                Y = 10f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateType ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "item_no",
+                X = 14f,
+                Y = 13f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateItemNo ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "power_rate",
+                X = 14f,
+                Y = 16f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlatePowerRate ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "rated_load",
+                X = 14f,
+                Y = 19f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateRatedLoad ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "duty_cycle",
+                X = 14f,
+                Y = 22f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = PlateDutyCycle ?? "",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "date",
+                X = 14f,
+                Y = 25f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = FormatPlateDate(),
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 2_copy_copy_copy_copy_copy_copy_copy",
+                X = 1f,
+                Y = 31f,
+                Width = 12f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "Address",
+                    FontName = "Arial",
+                    FontSize = 5.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Block 11_copy_copy",
+                X = 12f,
+                Y = 31f,
+                Width = 2f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = ":",
+                    FontName = "Arial",
+                    FontSize = 6f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "qrcode",
+                X = 39f,
+                Y = 13f,
+                Width = 14f,
+                Height = 12f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Qr = new QrElement
+                {
+                    Value = ResolvedSerialNo ?? "",
+                    ErrorCorrection = "M",
+                    SafeMarginMm = 1f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                    Charset = "UTF-8"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Address",
+                X = 14f,
+                Y = 31f,
+                Width = 41f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "PROVINCIALHIGHTECHPARK,XINCHANGCOUNTY,",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            },
+            new PrintBlock
+            {
+                Name = "Address_copy(1)",
+                X = 14f,
+                Y = 33f,
+                Width = 38f,
+                Height = 3f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Text = new TextElement
+                {
+                    Content = "ZHEJIANG,CHINA.:",
+                    FontName = "Arial",
+                    FontSize = 4.5f,
+                    Bold = true,
+                    Align = "left",
+                    VerticalAlign = "middle"
+                },
+            }
+        };
+
         return list;
     }
 
     List<PrintBlock> BarCode40x25()
     {
-        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "带RLogo.png");
         string img = PrinterHelper.ImageFileToBase64(imagePath);
         List<PrintBlock> list = new List<PrintBlock>
         {
@@ -4091,7 +4647,7 @@
                 X = 12.5f,
                 Y = 3f,
                 Width = 15f,
-                Height = 2f,
+                Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
                 Image = new ImageElement
@@ -4413,9 +4969,12 @@
         return list;
     }
 
+    /// <summary>
+    /// 通用铭牌二维码标签 40*25：独立 blocks，勿与条形码 40*25 / 其他模板合并。
+    /// </summary>
     List<PrintBlock> QrCode40x25()
     {
-        var imagePath = Path.Combine(Env.WebRootPath, "Images", "jiecanglogo.png");
+        var imagePath = Path.Combine(Env.WebRootPath, "Images", "带RLogo.png");
         string img = PrinterHelper.ImageFileToBase64(imagePath);
         List<PrintBlock> list = new List<PrintBlock>
         {
@@ -4425,7 +4984,7 @@
                 X = 12.5f,
                 Y = 3f,
                 Width = 15f,
-                Height = 2f,
+                Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
                 Image = new ImageElement
@@ -4434,7 +4993,7 @@
                     Fit = "contain",
                     Align = "center",
                     VerticalAlign = "middle",
-                    Opacity = 1f
+                    Opacity = 1f,
                 },
             },
             new PrintBlock
@@ -4453,7 +5012,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4472,7 +5031,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4491,7 +5050,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4510,7 +5069,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4529,7 +5088,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4548,7 +5107,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4567,7 +5126,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4586,7 +5145,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4594,7 +5153,7 @@
                 Name = "type",
                 X = 11.5f,
                 Y = 6.5f,
-                Width = 16f,
+                Width = 26.5f,
                 Height = 2f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -4605,7 +5164,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4624,7 +5183,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4643,7 +5202,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4662,7 +5221,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4681,7 +5240,7 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
@@ -4700,24 +5259,25 @@
                     FontSize = 4.5f,
                     Bold = true,
                     Align = "left",
-                    VerticalAlign = "middle"
+                    VerticalAlign = "middle",
                 },
             },
             new PrintBlock
             {
                 Name = "qrcode",
-                X = 27.5f,
-                Y = 7f,
-                Width = 10.5f,
-                Height = 10.5f,
+                X = 30f,
+                Y = 9f,
+                Width = 8f,
+                Height = 8.5f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
                 Qr = new QrElement
                 {
                     Value = ResolvedSerialNo ?? "",
-                    SafeMarginMm = 0.2f,
                     ErrorCorrection = "M",
-                    Charset = "UTF-8"
+                    SafeMarginMm = 0.1f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
                 },
             }
         };

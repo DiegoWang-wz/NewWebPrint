@@ -1,0 +1,1098 @@
+@page "/LabelPrintForJY"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject LocalStorageHelper LocalStorage
+@using System.Globalization
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudTabs Elevation="2" Rounded="true" Class="ma-2 tab-background jy-tabs" @bind-ActivePanelIndex="ActiveIndex"
+             ApplyEffectsToContainer="true" PanelClass="pa-6" TabPanelsClass="pt-2">
+        <MudTabPanel Text="AM-床架右标签">
+            @RenderPrintForm("AM-床架右标签", isRight: true)
+        </MudTabPanel>
+        <MudTabPanel Text="AM-床架左标签">
+            @RenderPrintForm("AM-床架左标签", isRight: false)
+        </MudTabPanel>
+        <MudTabPanel Text="PO号标签">
+            <MudGrid Class="pa-2" GutterSize="2">
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string"
+                               Label="@T["SelectPrinter"]"
+                               @bind-Value="SelectedPrinter"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Print"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               FullWidth="true">
+                        @foreach (var p in Printers)
+                        {
+                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string"
+                                  Value="@PoContent"
+                                  ValueChanged="OnPoContentChangedAsync"
+                                  Label="PO号内容"
+                                  Margin="Margin.Dense"
+                                  Variant="Variant.Outlined"
+                                  FullWidth="true"/>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="float"
+                                     Value="@PoFontSize"
+                                     ValueChanged="OnPoFontSizeChangedAsync"
+                                     Label="字号"
+                                     Margin="Margin.Dense"
+                                     Variant="Variant.Outlined"
+                                     Min="4"
+                                     Max="72"
+                                     Step="0.5f"/>
+                </MudItem>
+                <MudItem xs="12" md="3" Class="d-flex align-center">
+                    <MudCheckBox T="bool"
+                                 Value="@PoBold"
+                                 ValueChanged="OnPoBoldChangedAsync"
+                                 Label="加粗"
+                                 Color="Color.Primary"
+                                 Dense="true"/>
+                </MudItem>
+                <MudItem xs="12" md="6" Class="d-flex align-center">
+                    <MudStack Row="true" Spacing="2" Class="w-100">
+                        <MudNumericField @bind-Value="PoPrintCount" Margin="Margin.Dense" Label="打印数量"
+                                         Variant="Variant.Outlined" Min="1"/>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   OnClick="PrintPoSubmit"
+                                   Disabled="@IsPrinting"
+                                   Size="Size.Large"
+                                   Style="height:64px; font-size:1.2rem; font-weight:600; width: 150px">
+                            @(IsPrinting ? T["Printing"] : T["Print"])
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12">
+                    <div class="po-preview-wrap">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">标签预览</MudText>
+                        <div class="po-label" style="@($"width:{PoLabelWidthPx}px;height:{PoLabelHeightPx}px;")">
+                            <div class="po-cell" style="@PoCellStyle(0f, 1f, 100f, 24f)">
+                                <span style="@PoTextStyle()">@(string.IsNullOrWhiteSpace(PoContent) ? " " : PoContent.Trim())</span>
+                            </div>
+                        </div>
+                    </div>
+                </MudItem>
+                <MudItem xs="12">
+                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+    </MudTabs>
+</MudStack>
+
+@code {
+    List<string> Printers { get; set; } = new();
+    string? DefaultPrinter { get; set; }
+    string? SelectedPrinter { get; set; }
+    bool IsPrinting { get; set; }
+    string PrintMessages { get; set; } = string.Empty;
+    int PrintCount { get; set; } = 1;
+    int ActiveIndex { get; set; }
+    DateTime? SelectedDate { get; set; } = DateTime.Today;
+    bool _settingsLoaded;
+
+    /// <summary>右标签起始流水（奇数，默认 1）；左标签起始流水（偶数，默认 2）。</summary>
+    int StartSeqRight { get; set; } = 1;
+    int StartSeqLeft { get; set; } = 2;
+
+    string PoContent { get; set; } = "PO155333";
+    float PoFontSize { get; set; } = 12f;
+    bool PoBold { get; set; } = true;
+    int PoPrintCount { get; set; } = 1;
+
+    const float PaperWidthMm = 140f;
+    /// <summary>与设计器正常稿一致：140×74（非 70），旋转后高度差会导致整体偏移。</summary>
+    const float PaperHeightMm = 74f;
+    const float PoPaperWidthMm = 100f;
+    const float PoPaperHeightMm = 25f;
+    /// <summary>预览缩放：1mm → px（与 HuLabelPreviewDialog 同量级）。</summary>
+    const float PoPreviewScale = 4.2f;
+    const float PoLabelWidthPx = PoPaperWidthMm * PoPreviewScale;
+    const float PoLabelHeightPx = PoPaperHeightMm * PoPreviewScale;
+    const string SnPrefix = "18122";
+    const string SnSuffix = "2";
+    const string PrinterStorageKey = "LabelPrintForJY_printer";
+
+    static string PoCellStyle(float xMm, float yMm, float wMm, float hMm) =>
+        $"left:{xMm * PoPreviewScale:0.##}px;top:{yMm * PoPreviewScale:0.##}px;width:{wMm * PoPreviewScale:0.##}px;height:{hMm * PoPreviewScale:0.##}px;";
+
+    string PoTextStyle()
+    {
+        var size = Math.Clamp(PoFontSize, 4f, 72f);
+        var weight = PoBold ? "700" : "400";
+        return $"font-family:Arial,Helvetica,sans-serif;font-size:{size:0.##}pt;font-weight:{weight};line-height:1.1;";
+    }
+
+    RenderFragment RenderPrintForm(string labelName, bool isRight) => __builder =>
+    {
+        <MudGrid Class="pa-2" GutterSize="2">
+            <MudItem xs="12" md="4">
+                <MudSelect T="string"
+                           Label="@T["SelectPrinter"]"
+                           @bind-Value="SelectedPrinter"
+                           Adornment="Adornment.Start"
+                           AdornmentIcon="@Icons.Material.Filled.Print"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           FullWidth="true">
+                    @foreach (var p in Printers)
+                    {
+                        <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker Label="生产日期"
+                               @bind-Date="SelectedDate"
+                               Margin="Margin.Dense"
+                               Editable="true"
+                               DateFormat="yyyy-MM-dd"
+                               Variant="Variant.Outlined"/>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField T="int"
+                                 Value="@(isRight ? StartSeqRight : StartSeqLeft)"
+                                 ValueChanged="@(async v => await OnStartSeqChangedAsync(isRight, v))"
+                                 Margin="Margin.Dense"
+                                 Label="@(isRight ? "起始流水号(奇数)" : "起始流水号(偶数)")"
+                                 Variant="Variant.Outlined"
+                                 Min="1"/>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudTextField T="string"
+                              Value="@PreviewSerialPair(isRight)"
+                              ReadOnly="true"
+                              Label="下一份双列序列号预览(左列 | 右列)"
+                              Margin="Margin.Dense"
+                              Variant="Variant.Outlined"
+                              Class="font-monospace"/>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-center">
+                <MudStack Row="true" Spacing="2" Class="w-100">
+                    <MudNumericField @bind-Value="PrintCount" Margin="Margin.Dense" Label="打印份数(每份双列两枚)"
+                                     Variant="Variant.Outlined" Min="1"/>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="@(() => PrintSubmit(isRight, labelName))"
+                               Disabled="@IsPrinting"
+                               Size="Size.Large"
+                               Style="height:64px; font-size:1.2rem; font-weight:600; width: 150px">
+                        @(IsPrinting ? T["Printing"] : T["Print"])
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    同模板双列：IsRotate 后左列=起始流水、右列=起始+2；下一份起始+4。右模板奇数、左模板偶数；日期写入 SN 的年/周/星期。
+                </MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="260"/>
+            </MudItem>
+        </MudGrid>
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+
+        if (firstRender && !_settingsLoaded)
+        {
+            _settingsLoaded = true;
+            await LoadJySettingsFromStorageAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    async Task LoadJySettingsFromStorageAsync()
+    {
+        try
+        {
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.LabelPrintForJyStartSeqRight))
+            {
+                var s = await LocalStorage.GetStringAsync(StorageKeys.LabelPrintForJyStartSeqRight);
+                if (int.TryParse(s, out var r))
+                    StartSeqRight = NormalizeStartSeq(r, oddParity: true);
+            }
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.LabelPrintForJyStartSeqLeft))
+            {
+                var s = await LocalStorage.GetStringAsync(StorageKeys.LabelPrintForJyStartSeqLeft);
+                if (int.TryParse(s, out var l))
+                    StartSeqLeft = NormalizeStartSeq(l, oddParity: false);
+            }
+
+            PoContent = await LocalStorage.GetStringOrDefaultAsync(StorageKeys.LabelPrintForJyPoContent, "PO155333");
+
+            var fontStr = await LocalStorage.GetStringAsync(StorageKeys.LabelPrintForJyPoFontSize);
+            if (float.TryParse(fontStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var fontSize)
+                && fontSize >= 4f && fontSize <= 72f)
+                PoFontSize = fontSize;
+
+            var boldStr = await LocalStorage.GetStringAsync(StorageKeys.LabelPrintForJyPoBold);
+            if (bool.TryParse(boldStr, out var bold))
+                PoBold = bold;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"读取本地设置失败：{ex.Message}");
+        }
+    }
+
+    async Task OnStartSeqChangedAsync(bool isRight, int value)
+    {
+        var n = NormalizeStartSeq(value, isRight);
+        if (isRight) StartSeqRight = n;
+        else StartSeqLeft = n;
+        await PersistStartSeqAsync(isRight);
+    }
+
+    async Task PersistStartSeqAsync(bool isRight)
+    {
+        try
+        {
+            var key = isRight ? StorageKeys.LabelPrintForJyStartSeqRight : StorageKeys.LabelPrintForJyStartSeqLeft;
+            var val = (isRight ? StartSeqRight : StartSeqLeft).ToString(CultureInfo.InvariantCulture);
+            await LocalStorage.SetAsync(key, val);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"保存起始流水失败：{ex.Message}");
+        }
+    }
+
+    async Task OnPoContentChangedAsync(string value)
+    {
+        PoContent = value ?? string.Empty;
+        await PersistPoSettingsAsync();
+    }
+
+    async Task OnPoFontSizeChangedAsync(float value)
+    {
+        PoFontSize = Math.Clamp(value, 4f, 72f);
+        await PersistPoSettingsAsync();
+    }
+
+    async Task OnPoBoldChangedAsync(bool value)
+    {
+        PoBold = value;
+        await PersistPoSettingsAsync();
+    }
+
+    async Task PersistPoSettingsAsync()
+    {
+        try
+        {
+            await LocalStorage.SetAsync(StorageKeys.LabelPrintForJyPoContent, PoContent);
+            await LocalStorage.SetAsync(
+                StorageKeys.LabelPrintForJyPoFontSize,
+                PoFontSize.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(
+                StorageKeys.LabelPrintForJyPoBold,
+                PoBold ? "true" : "false");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"保存PO设置失败：{ex.Message}");
+        }
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    DateTime EffectiveDate => SelectedDate ?? DateTime.Today;
+
+    string PreviewSerialPair(bool isRight)
+    {
+        var seq = NormalizeStartSeq(isRight ? StartSeqRight : StartSeqLeft, isRight);
+        var left = BuildSerialNo(EffectiveDate, seq);
+        var right = BuildSerialNo(EffectiveDate, seq + 2);
+        return $"{left} | {right}";
+    }
+
+    static int NormalizeStartSeq(int seq, bool oddParity)
+    {
+        if (seq < 1) seq = oddParity ? 1 : 2;
+        var isOdd = seq % 2 == 1;
+        if (oddParity && !isOdd) seq++;
+        if (!oddParity && isOdd) seq++;
+        return seq;
+    }
+
+    /// <summary>
+    /// 序列号：固定前缀5位 + 年2 + 周2 + 星期1 + 流水5 + 固定后缀1。
+    /// 例：18122 + 26 + 29 + 3 + 03491 + 2
+    /// </summary>
+    static string BuildSerialNo(DateTime date, int sequence5)
+    {
+        var isoYear = ISOWeek.GetYear(date);
+        var week = ISOWeek.GetWeekOfYear(date);
+        var dow = date.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)date.DayOfWeek;
+        var yy = (isoYear % 100).ToString("D2", CultureInfo.InvariantCulture);
+        var ww = week.ToString("D2", CultureInfo.InvariantCulture);
+        var seq = Math.Clamp(sequence5, 1, 99999).ToString("D5", CultureInfo.InvariantCulture);
+        return $"{SnPrefix}{yy}{ww}{dow}{seq}{SnSuffix}";
+    }
+
+    string? LoadImageBase64(string fileName)
+    {
+        var path = Path.Combine(Env.WebRootPath, "Images", fileName);
+        if (!File.Exists(path))
+            return null;
+        return PrinterHelper.ImageFileToBase64(path);
+    }
+
+    async Task PrintSubmit(bool isRight, string labelName)
+    {
+        if (IsPrinting) return;
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        var startSeq = NormalizeStartSeq(isRight ? StartSeqRight : StartSeqLeft, isRight);
+        if (isRight) StartSeqRight = startSeq;
+        else StartSeqLeft = startSeq;
+
+        var imgManual = LoadImageBase64("Read_operator_manual.png");
+        var imgJy1 = LoadImageBase64("居优1.png");
+        var imgJy2 = LoadImageBase64("居优2.png");
+        if (isRight && (imgJy1 == null || imgJy2 == null))
+            AppendLog("警告：未找到 居优1.png / 居优2.png，认证图标可能空白。");
+        if (isRight && imgManual == null)
+            AppendLog("警告：未找到 Read_operator_manual.png，说明书图标可能空白（可放到 wwwroot/Images）。");
+
+        IsPrinting = true;
+        AppendLog($"开始打印 {labelName}：{SelectedPrinter}，日期 {EffectiveDate:yyyy-MM-dd}，份数 {PrintCount}，起始流水 {startSeq:D5}");
+        try
+        {
+            var date = EffectiveDate;
+            for (var i = 0; i < PrintCount; i++)
+            {
+                // 每份双列：左列=start+i*4，右列=左列+2；下份起始 +4
+                var seqLeft = startSeq + i * 4;
+                var seqRight = seqLeft + 2;
+                var serialLeft = BuildSerialNo(date, seqLeft);
+                var serialRight = BuildSerialNo(date, seqRight);
+                var blocks = isRight
+                    ? BuildAmBedRightBlocks(serialLeft, serialRight, imgManual, imgJy1, imgJy2)
+                    : BuildAmBedLeftBlocks(serialLeft, serialRight);
+
+                var layout = new PrintLayoutModel
+                {
+                    PrinterName = SelectedPrinter,
+                    PaperWidthMm = PaperWidthMm,
+                    PaperHeightMm = PaperHeightMm,
+                    Copies = 1,
+                    StartValue = 1,
+                    PrintCount = 1,
+                    GapMm = null,
+                    BorderThicknessMm = 0.2f,
+                    // 版面内两枚按 Y 上下排布；旋转后实物为竖直方向、左右各一枚（同模板、不同 SN）
+                    IsRotate = true,
+                    Blocks = blocks
+                };
+
+                await PrinterHelper.PrintLayoutAsync(JS, layout);
+                AppendLog($"已提交第 {i + 1}/{PrintCount} 份：左 {serialLeft} / 右 {serialRight}");
+            }
+
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+
+            var next = startSeq + PrintCount * 4;
+            if (isRight) StartSeqRight = next;
+            else StartSeqLeft = next;
+            await PersistStartSeqAsync(isRight);
+
+            AppendLog($"打印提交成功，下一起始流水 {next:D5}。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task PrintPoSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(PoContent))
+        {
+            SnackbarHelper.Show("请填写PO号内容", Severity.Warning);
+            return;
+        }
+
+        if (PoPrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        PoFontSize = Math.Clamp(PoFontSize, 4f, 72f);
+        await PersistPoSettingsAsync();
+
+        IsPrinting = true;
+        AppendLog($"开始打印 PO号标签：{SelectedPrinter}，内容「{PoContent.Trim()}」，字号 {PoFontSize}，加粗 {PoBold}，数量 {PoPrintCount}");
+        try
+        {
+            var layout = new PrintLayoutModel
+            {
+                PrinterName = SelectedPrinter,
+                PaperWidthMm = PoPaperWidthMm,
+                PaperHeightMm = PoPaperHeightMm,
+                Copies = PoPrintCount,
+                StartValue = 1,
+                PrintCount = 1,
+                GapMm = null,
+                BorderThicknessMm = 0f,
+                IsRotate = false,
+                Blocks =
+                [
+                    new PrintBlock
+                    {
+                        Name = "文本1",
+                        X = 0f,
+                        Y = 1f,
+                        Width = 100f,
+                        Height = 24f,
+                        ShowBorder = false,
+                        Text = new TextElement
+                        {
+                            Content = PoContent.Trim(),
+                            FontName = "Arial",
+                            FontSize = PoFontSize,
+                            Bold = PoBold,
+                            Align = "center",
+                            VerticalAlign = "middle",
+                        },
+                    }
+                ]
+            };
+
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+
+            AppendLog("PO号标签打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static string BuildRightSpecText(string serial) =>
+        "符合UL STD 962 标准\n" +
+        "通过CS STD C22.2 NO.68认证\n" +
+        "输入电压/功率 电流:100-240VAC50160Hz3A\n" +
+        "工作制:使用2分钟/停止18分钟\n" +
+        $"S/N序列号:{serial}";
+
+    static string BuildLeftSnBody(string serial) =>
+        "只能与电源适配器\nZB-H290030-G 结合使用\n仅供家庭使用！\n" +
+        $"S/N序列号:{serial}\n";
+
+    /// <summary>
+    /// AM-床架右模板双列：第一排(小Y→旋转后左列)=serialLeft，第二排(大Y→右列)=serialRight。
+    /// </summary>
+    List<PrintBlock> BuildAmBedRightBlocks(string serialLeft, string serialRight, string? imgManual, string? imgJy1, string? imgJy2)
+    {
+        var specTextLeft = BuildRightSpecText(serialLeft);
+        var specTextRight = BuildRightSpecText(serialRight);
+
+        ImageElement MakeImg(string? b64, string filePath) => new()
+        {
+            Base64 = b64,
+            FilePath = string.IsNullOrEmpty(b64) ? filePath : null,
+            Fit = "contain",
+            Align = "center",
+            VerticalAlign = "middle",
+            Opacity = 1f,
+        };
+
+        return new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "文本1",
+                X = 5f, Y = 4f, Width = 13f, Height = 8f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告",
+                    FontName = "SimSun", FontSize = 14f, Bold = true,
+                    Align = "center", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本2",
+                X = 5f, Y = 14f, Width = 33f, Height = 16f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "-有电击、火灾和人身伤\n害的危险-请查看组装说\n明，以确认家具使用了适\n当的关键零配件。",
+                    FontName = "SimSun", FontSize = 7f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本3",
+                X = 46f, Y = 4f, Width = 49f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "LOGICDATA",
+                    FontName = "Arial", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本3_copy(1)",
+                X = 46f, Y = 10f, Width = 49f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "A-8530 Deutschlandsberg",
+                    FontName = "Arial", FontSize = 9f,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本5",
+                X = 45f, Y = 16f, Width = 53f, Height = 18f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = specTextLeft,
+                    FontName = "SimSun", FontSize = 7f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本6",
+                X = 103f, Y = 3f, Width = 31f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "SFS-SLM-LDS-A",
+                    FontName = "Arial", FontSize = 10f, Bold = true,
+                    Align = "center", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "二维码1",
+                X = 122f, Y = 24f, Width = 10f, Height = 9f,
+                ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = serialLeft,
+                    ErrorCorrection = "M",
+                    SafeMarginMm = 0f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "图片2_copy(2)",
+                X = 122f, Y = 12f, Width = 11f, Height = 11f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgManual, "/Images/Read_operator_manual.png"),
+            },
+            new PrintBlock
+            {
+                Name = "图片7",
+                X = 109f, Y = 24f, Width = 10f, Height = 9f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgJy1, "/Images/居优1.png"),
+            },
+            new PrintBlock
+            {
+                Name = "图片8",
+                X = 109f, Y = 11f, Width = 11f, Height = 12f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgJy2, "/Images/居优2.png"),
+            },
+            // —— 第二排（旋转后右列）——
+            new PrintBlock
+            {
+                Name = "文本1_copy(1)",
+                X = 5f, Y = 41f, Width = 13f, Height = 8f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告",
+                    FontName = "SimSun", FontSize = 14f, Bold = true,
+                    Align = "center", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本2_copy(1)",
+                X = 5f, Y = 51f, Width = 33f, Height = 16f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "-有电击、火灾和人身伤\n害的危险-请查看组装说\n明，以确认家具使用了适\n当的关键零配件。",
+                    FontName = "SimSun", FontSize = 7f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本3_copy(2)",
+                X = 46f, Y = 41f, Width = 49f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "LOGICDATA",
+                    FontName = "Arial", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本3_copy(3)",
+                X = 46f, Y = 47f, Width = 49f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "A-8530 Deutschlandsberg",
+                    FontName = "Arial", FontSize = 9f,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本5_copy(1)",
+                X = 45f, Y = 53f, Width = 53f, Height = 18f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = specTextRight,
+                    FontName = "SimSun", FontSize = 7f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本6_copy(1)",
+                X = 103f, Y = 40f, Width = 31f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "SFS-SLM-LDS-A",
+                    FontName = "Arial", FontSize = 10f, Bold = true,
+                    Align = "center", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "二维码1_copy(1)",
+                X = 122f, Y = 61f, Width = 10f, Height = 9f,
+                ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = serialRight,
+                    ErrorCorrection = "M",
+                    SafeMarginMm = 0f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "图片2_copy(3)",
+                X = 122f, Y = 49f, Width = 11f, Height = 11f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgManual, "/Images/Read_operator_manual.png"),
+            },
+            new PrintBlock
+            {
+                Name = "图片7_copy(1)",
+                X = 109f, Y = 61f, Width = 10f, Height = 9f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgJy1, "/Images/居优1.png"),
+            },
+            new PrintBlock
+            {
+                Name = "图片8_copy(1)",
+                X = 109f, Y = 48f, Width = 11f, Height = 12f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                Image = MakeImg(imgJy2, "/Images/居优2.png"),
+            },
+        };
+    }
+
+    /// <summary>
+    /// AM-床架左模板双列：第一排(小Y→旋转后左列)=serialLeft，第二排(大Y→右列)=serialRight。
+    /// </summary>
+    List<PrintBlock> BuildAmBedLeftBlocks(string serialLeft, string serialRight)
+    {
+        var leftSnBody = BuildLeftSnBody(serialLeft);
+        var rightSnBody = BuildLeftSnBody(serialRight);
+
+        return new List<PrintBlock>
+        {
+            new PrintBlock
+            {
+                Name = "文本1",
+                X = 4f, Y = 3f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(1)",
+                X = 4f, Y = 8f, Width = 46f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "只能与电源适配器\nZB-H290030-G 结合使用",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(3)",
+                X = 4f, Y = 15f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(4)",
+                X = 4f, Y = 20f, Width = 46f, Height = 14.5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = leftSnBody,
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "二维码1",
+                X = 36.5f, Y = 2.5f, Width = 10f, Height = 10f,
+                ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = serialLeft,
+                    ErrorCorrection = "M",
+                    SafeMarginMm = 0f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "直线1",
+                X = 48f, Y = 2.5f, Width = 1f, Height = 31.5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f, // 线宽（LocalAgent ResolveWireframeStrokeMm）
+                Line = new LineElement { X1Mm = 0f, Y1Mm = 0f, X2Mm = 0f, Y2Mm = 31.5f },
+            },
+            new PrintBlock
+            {
+                Name = "直线2",
+                X = 50f, Y = 16f, Width = 87.5f, Height = 1f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                Line = new LineElement { X1Mm = 0f, Y1Mm = 0f, X2Mm = 87.5f, Y2Mm = 0f },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(5)",
+                X = 50f, Y = 3.5f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(6)",
+                X = 50f, Y = 8.5f, Width = 86.5f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "-有触电、火灾和受伤的危险，请阅读装配说明，\n确认家具使用了适当的关键零配件。",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(7)",
+                X = 49.5f, Y = 18f, Width = 93.5f, Height = 13f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "本设备符合FCC规则第15部分的规定。\n操作需满足一下两个条件：（1）该设备不会造成有害干扰，并且\n（2）设备必须接受收到的任何干扰，包括可能导致意外操作的干扰。",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            // —— 第二排 ——
+            new PrintBlock
+            {
+                Name = "文本1_copy(8)",
+                X = 4f, Y = 39.5f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(9)",
+                X = 4f, Y = 44.5f, Width = 46f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "只能与电源适配器\nZB-H290030-G 结合使用",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(10)",
+                X = 4f, Y = 51.5f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(11)",
+                X = 4f, Y = 56.5f, Width = 46f, Height = 14.5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = rightSnBody,
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "二维码1_copy(1)",
+                X = 36.5f, Y = 39f, Width = 10f, Height = 10f,
+                ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = serialRight,
+                    ErrorCorrection = "M",
+                    SafeMarginMm = 0f,
+                    DigitFontSizePt = 6f,
+                    DigitOffsetYMm = 0f,
+                },
+            },
+            new PrintBlock
+            {
+                Name = "直线1_copy(1)",
+                X = 48f, Y = 39f, Width = 1f, Height = 31.5f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                Line = new LineElement { X1Mm = 0f, Y1Mm = 0f, X2Mm = 0f, Y2Mm = 31.5f },
+            },
+            new PrintBlock
+            {
+                Name = "直线2_copy(1)",
+                X = 50f, Y = 52.5f, Width = 87.5f, Height = 1f,
+                ShowBorder = false,
+                BorderStyle = "Solid",
+                BorderTopMm = 0.2f,
+                Line = new LineElement { X1Mm = 0f, Y1Mm = 0f, X2Mm = 87.5f, Y2Mm = 0f },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(12)",
+                X = 50f, Y = 40f, Width = 17f, Height = 5f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "警告:",
+                    FontName = "SimSun", FontSize = 12f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(13)",
+                X = 50f, Y = 45f, Width = 86.5f, Height = 7f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "-有触电、火灾和受伤的危险，请阅读装配说明，\n确认家具使用了适当的关键零配件。",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+            new PrintBlock
+            {
+                Name = "文本1_copy(14)",
+                X = 49.5f, Y = 54.5f, Width = 93.5f, Height = 13f,
+                ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = "本设备符合FCC规则第15部分的规定。\n操作需满足一下两个条件：（1）该设备不会造成有害干扰，并且\n（2）设备必须接受收到的任何干扰，包括可能导致意外操作的干扰。",
+                    FontName = "SimSun", FontSize = 7.5f, Bold = true,
+                    Align = "left", VerticalAlign = "middle",
+                },
+            },
+        };
+    }
+}
+
+<style>
+    .tab-background {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    /* MudGrid 等内容会叠到 Tab 栏上，导致只有对准文字才可点/悬停；抬高 toolbar 命中区 */
+    .jy-tabs .mud-tabs-toolbar {
+        position: relative;
+        z-index: 2;
+    }
+
+    .jy-tabs .mud-tab {
+        min-height: 48px;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .po-preview-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 12px 8px;
+        background: #eef1f4;
+        border-radius: 8px;
+        border: 1px dashed #c5ccd4;
+    }
+
+    .po-label {
+        position: relative;
+        background: #fff;
+        border: 1px solid #222;
+        box-sizing: border-box;
+        overflow: hidden;
+        color: #111;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    .po-cell {
+        position: absolute;
+        box-sizing: border-box;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 4px;
+        background: #fff;
+    }
+
+    .po-cell span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
