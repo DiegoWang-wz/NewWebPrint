@@ -18,6 +18,7 @@
                 <MudTh>JC Part</MudTh>
                 <MudTh>LD Part</MudTh>
                 <MudTh Style="min-width:180px;">LD Part Name</MudTh>
+                <MudTh>工厂类型</MudTh>
                 <MudTh>Revision</MudTh>
                 <MudTh>Weight</MudTh>
                 <MudTh>Qty</MudTh>
@@ -28,6 +29,7 @@
                 <MudTd DataLabel="JC Part">@context.JCPartNumber</MudTd>
                 <MudTd DataLabel="LD Part">@context.LDPartNumber</MudTd>
                 <MudTd DataLabel="LD Part Name" Style="white-space:normal; word-break:break-word; max-width:280px;">@context.LDPartName</MudTd>
+                <MudTd DataLabel="工厂类型">@(string.IsNullOrWhiteSpace(context.FactoryType) ? "线性" : context.FactoryType)</MudTd>
                 <MudTd DataLabel="Revision">@context.RevisionNumber</MudTd>
                 <MudTd DataLabel="Weight">@context.PackageWeight</MudTd>
                 <MudTd DataLabel="Qty">@context.Quantity</MudTd>
@@ -101,6 +103,7 @@
             SupplierName = item.SupplierName,
             LDPartNumber = item.LDPartNumber,
             LDPartName = item.LDPartName,
+            FactoryType = item.FactoryType,
             RevisionNumber = item.RevisionNumber,
             PackageWeight = item.PackageWeight,
             Quantity = item.Quantity

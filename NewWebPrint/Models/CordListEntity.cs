@@ -25,6 +25,10 @@ public class CordListEntity
     [MaxLength(256)]
     public string? LDPartName { get; set; }
 
+    /// <summary>工厂类型：线性 / 进出口</summary>
+    [MaxLength(32)]
+    public string? FactoryType { get; set; }
+
     [MaxLength(32)]
     public string? RevisionNumber { get; set; }
 

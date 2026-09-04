@@ -21,6 +21,12 @@
                 <MudTextField @bind-Value="EditItem.LDPartName" Label="LD Part Name" Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="EditItem.FactoryType" Label="工厂类型" Variant="Variant.Outlined" FullWidth="true">
+                    <MudSelectItem T="string" Value="@("线性")">线性</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("进出口")">进出口</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
                 <MudTextField @bind-Value="EditItem.RevisionNumber" Label="Revision Number" Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="4">
@@ -47,7 +53,7 @@
     [Parameter]
     public bool IsEdit { get; set; }
 
-    private CordListDto EditItem { get; set; } = new();
+    private CordListDto EditItem { get; set; } = new() { FactoryType = "线性" };
 
     protected override void OnInitialized()
     {
@@ -60,6 +66,7 @@
                 SupplierName = Item.SupplierName,
                 LDPartNumber = Item.LDPartNumber,
                 LDPartName = Item.LDPartName,
+                FactoryType = string.IsNullOrWhiteSpace(Item.FactoryType) ? "线性" : Item.FactoryType,
                 RevisionNumber = Item.RevisionNumber,
                 PackageWeight = Item.PackageWeight,
                 Quantity = Item.Quantity
@@ -74,6 +81,11 @@
         if (string.IsNullOrWhiteSpace(EditItem.JCPartNumber))
         {
             SnackbarHelper.Show("请填写 JC Part Number", Severity.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(EditItem.FactoryType))
+        {
+            SnackbarHelper.Show("请选择工厂类型", Severity.Warning);
             return;
         }
         MudDialog?.Close(DialogResult.Ok(EditItem));

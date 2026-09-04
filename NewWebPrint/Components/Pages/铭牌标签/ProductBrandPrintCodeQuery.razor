@@ -1,0 +1,497 @@
+@page "/ProductBrandPrintCodeQuery"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject IJSRuntime JS
+@using ClosedXML.Excel
+
+<MudStack Spacing="1" Class="pa-2">
+    <MudPaper Class="pa-2 tab-background" Elevation="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+            <MudText Typo="Typo.subtitle2" Style="font-weight:600;">铭牌打印码查询</MudText>
+            <MudText Typo="Typo.caption" Style="opacity:0.65;">服务端分页 · 导出为当前条件全部记录</MudText>
+        </MudStack>
+        <div class="pb-filter-grid">
+            <div class="pb-cell pb-cell-prod">
+                <MudTextField @bind-Value="ProductionNo"
+                              Label="生产订单号"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+            </div>
+            <div class="pb-cell pb-cell-serial">
+                <MudTextField @bind-Value="SerialNo"
+                              Label="流水号"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+            </div>
+            <div class="pb-cell pb-cell-sap">
+                <MudTextField @bind-Value="SapNo"
+                              Label="销售订单（支持批量）"
+                              HelperText="每行一个主号，可省略 -00080"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Lines="3"
+                              Class="pb-sap-field"
+                              Immediate="false"/>
+            </div>
+            <div class="pb-cell pb-cell-model-part">
+                <MudTextField @bind-Value="Model"
+                              Label="型号"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+                <MudTextField @bind-Value="PartNo"
+                              Label="PartNo"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"/>
+            </div>
+            <div class="pb-cell pb-cell-from">
+                <MudDatePicker @bind-Date="CreateFrom"
+                               Label="日期起"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               DateFormat="yyyy-MM-dd"
+                               Editable="true"/>
+            </div>
+            <div class="pb-cell pb-cell-to">
+                <MudDatePicker @bind-Date="CreateTo"
+                               Label="日期止"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               DateFormat="yyyy-MM-dd"
+                               Editable="true"/>
+            </div>
+            <div class="pb-cell pb-cell-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="SearchAsync"
+                           Disabled="@(IsSearching || IsExporting)"
+                           Class="pb-filter-btn">
+                    @(IsSearching ? "查询中…" : "查询")
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           OnClick="ExportExcelAsync"
+                           Disabled="@(IsSearching || IsExporting)"
+                           StartIcon="@Icons.Material.Filled.FileDownload"
+                           Class="pb-filter-btn">
+                    @(IsExporting ? "导出中…" : "导出")
+                </MudButton>
+            </div>
+        </div>
+    </MudPaper>
+
+    <style>
+        .pb-filter-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: auto auto;
+            gap: 8px 12px;
+            align-items: stretch;
+            grid-template-areas:
+                "prod serial sap modelpart"
+                "from to sap actions";
+        }
+        .pb-cell-prod { grid-area: prod; }
+        .pb-cell-serial { grid-area: serial; }
+        .pb-cell-sap { grid-area: sap; }
+        .pb-cell-model-part { grid-area: modelpart; }
+        .pb-cell-from { grid-area: from; }
+        .pb-cell-to { grid-area: to; }
+        .pb-cell-actions { grid-area: actions; }
+
+        .pb-cell {
+            min-width: 0;
+            display: flex;
+            align-items: flex-end;
+        }
+        .pb-cell > * {
+            width: 100%;
+        }
+        .pb-cell-model-part {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .pb-cell-model-part > * {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .pb-cell-sap {
+            align-items: stretch;
+        }
+        .pb-cell-sap .pb-sap-field,
+        .pb-cell-sap .mud-input-control {
+            height: 100%;
+        }
+        .pb-cell-actions {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            height: 40px;
+            align-self: end;
+        }
+        .pb-cell-actions .pb-filter-btn {
+            flex: 1 1 0;
+            min-width: 0;
+            height: 40px !important;
+            margin: 0 !important;
+        }
+        @@media (max-width: 960px) {
+            .pb-filter-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-areas:
+                    "prod serial"
+                    "from to"
+                    "sap sap"
+                    "modelpart modelpart"
+                    "actions actions";
+            }
+        }
+    </style>
+
+    <MudPaper Class="pa-2 tab-background" Elevation="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1 px-1" Spacing="2">
+            <MudText Typo="Typo.caption">共 @TotalCount 条</MudText>
+            <MudText Typo="Typo.caption" Style="opacity:0.75;">已勾选 @_selected.Count 条（可跨页勾选）</MudText>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       OnClick="SelectAllMatchingAsync"
+                       Disabled="@(IsSearching || IsExporting || IsSelectingAll || TotalCount == 0)">
+                @(IsSelectingAll ? "勾选中…" : "勾选全部")
+            </MudButton>
+            @if (_selected.Count > 0)
+            {
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Default"
+                           Size="Size.Small"
+                           OnClick="ClearSelection"
+                           Disabled="@IsSelectingAll">
+                    清空勾选
+                </MudButton>
+            }
+        </MudStack>
+
+        <MudTable @ref="_table"
+                  T="ProductBrandPrintCodeRow"
+                  ServerData="ServerReload"
+                  Dense="true"
+                  Hover="true"
+                  Striped="true"
+                  FixedHeader="true"
+                  Height="520px"
+                  Breakpoint="Breakpoint.None"
+                  Loading="@IsSearching"
+                  RowsPerPage="20">
+            <HeaderContent>
+                <MudTh Style="width:48px;">
+                    <MudCheckBox T="bool"
+                                 Value="@PageAllSelected"
+                                 ValueChanged="OnPageSelectAllChanged"
+                                 Dense="true"
+                                 Disabled="@(_pageItems.Count == 0)"
+                                 Title="本页全选"/>
+                </MudTh>
+                <MudTh>ID</MudTh>
+                <MudTh>生产订单</MudTh>
+                <MudTh>流水</MudTh>
+                <MudTh>序列号 SerialNo</MudTh>
+                <MudTh>销售订单</MudTh>
+                <MudTh>型号</MudTh>
+                <MudTh>PartNo</MudTh>
+                <MudTh>生产日期</MudTh>
+                <MudTh>Rev</MudTh>
+                <MudTh>IPX6</MudTh>
+                <MudTh>Input</MudTh>
+                <MudTh>创建时间</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudCheckBox T="bool"
+                                 Value="@IsSelected(context.ID)"
+                                 ValueChanged="@(v => ToggleSelect(context, v))"
+                                 Dense="true"/>
+                </MudTd>
+                <MudTd DataLabel="ID">@context.ID</MudTd>
+                <MudTd DataLabel="生产订单">@context.ProductionNo</MudTd>
+                <MudTd DataLabel="流水">@context.SerialNumber</MudTd>
+                <MudTd DataLabel="SerialNo">@context.SerialNo</MudTd>
+                <MudTd DataLabel="销售订单">@context.SAPNo</MudTd>
+                <MudTd DataLabel="型号">@context.Model</MudTd>
+                <MudTd DataLabel="PartNo">@context.PartNo</MudTd>
+                <MudTd DataLabel="生产日期">@context.ProdDate</MudTd>
+                <MudTd DataLabel="Rev">@context.RevNo</MudTd>
+                <MudTd DataLabel="IPX6">@context.IPX6</MudTd>
+                <MudTd DataLabel="Input">@context.Input</MudTd>
+                <MudTd DataLabel="创建时间">@(context.Createtime?.ToString("yyyy-MM-dd HH:mm:ss"))</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">暂无数据</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 20, 50, 100 }"
+                               InfoFormat="{first_item}-{last_item} / {all_items}"
+                               RowsPerPageString="每页行数"/>
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+</MudStack>
+
+@code {
+    private readonly BLLProductBrandPrint _bll = new();
+    private MudTable<ProductBrandPrintCodeRow>? _table;
+
+    private string? ProductionNo { get; set; }
+    private string? SerialNo { get; set; }
+    private string? SapNo { get; set; }
+    private string? Model { get; set; }
+    private string? PartNo { get; set; }
+    private DateTime? CreateFrom { get; set; } = DateTime.Today.AddDays(-7);
+    private DateTime? CreateTo { get; set; } = DateTime.Today;
+
+    private bool IsSearching { get; set; }
+    private bool IsExporting { get; set; }
+    private bool IsSelectingAll { get; set; }
+    private int TotalCount { get; set; }
+
+    private readonly Dictionary<long, ProductBrandPrintCodeRow> _selected = new();
+    private List<ProductBrandPrintCodeRow> _pageItems = [];
+
+    private bool PageAllSelected =>
+        _pageItems.Count > 0 && _pageItems.All(x => _selected.ContainsKey(x.ID));
+
+    private bool HasFilter() =>
+        !string.IsNullOrWhiteSpace(ProductionNo)
+        || !string.IsNullOrWhiteSpace(SerialNo)
+        || !string.IsNullOrWhiteSpace(SapNo)
+        || !string.IsNullOrWhiteSpace(Model)
+        || !string.IsNullOrWhiteSpace(PartNo)
+        || CreateFrom.HasValue
+        || CreateTo.HasValue;
+
+    private bool IsSelected(long id) => _selected.ContainsKey(id);
+
+    private void ToggleSelect(ProductBrandPrintCodeRow row, bool selected)
+    {
+        if (selected)
+            _selected[row.ID] = row;
+        else
+            _selected.Remove(row.ID);
+    }
+
+    private void OnPageSelectAllChanged(bool selected)
+    {
+        if (selected)
+        {
+            foreach (var row in _pageItems)
+                _selected[row.ID] = row;
+        }
+        else
+        {
+            foreach (var row in _pageItems)
+                _selected.Remove(row.ID);
+        }
+    }
+
+    private void ClearSelection()
+    {
+        _selected.Clear();
+    }
+
+    /// <summary>
+    /// 勾选当前查询条件下的全部记录（跨页）。
+    /// </summary>
+    private async Task SelectAllMatchingAsync()
+    {
+        if (IsSelectingAll) return;
+        if (!HasFilter())
+        {
+            SnackbarHelper.Show("请先填写条件并查询", Severity.Warning);
+            return;
+        }
+
+        if (TotalCount <= 0)
+        {
+            SnackbarHelper.Show("当前没有可勾选的数据", Severity.Warning);
+            return;
+        }
+
+        IsSelectingAll = true;
+        try
+        {
+            var rows = await Task.Run(() => _bll.QueryAll(
+                ProductionNo,
+                SerialNo,
+                SapNo,
+                Model,
+                PartNo,
+                CreateFrom,
+                CreateTo));
+
+            _selected.Clear();
+            foreach (var row in rows)
+                _selected[row.ID] = row;
+
+            SnackbarHelper.Show($"已勾选全部 {_selected.Count} 条", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"勾选全部失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSelectingAll = false;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (!HasFilter())
+        {
+            SnackbarHelper.Show("请至少填写一个查询条件（建议带日期范围）", Severity.Warning);
+            return;
+        }
+
+        _selected.Clear();
+        if (_table != null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task<TableData<ProductBrandPrintCodeRow>> ServerReload(TableState state, CancellationToken token)
+    {
+        // 有默认日期时，进页/刷新 MudTable 会自动触发一次查询
+        if (!HasFilter())
+        {
+            TotalCount = 0;
+            _pageItems = [];
+            return new TableData<ProductBrandPrintCodeRow> { TotalItems = 0, Items = [] };
+        }
+
+        IsSearching = true;
+        try
+        {
+            var result = await Task.Run(() => _bll.QueryPaged(
+                ProductionNo,
+                SerialNo,
+                SapNo,
+                Model,
+                PartNo,
+                CreateFrom,
+                CreateTo,
+                state.Page,
+                state.PageSize), token);
+
+            TotalCount = result.TotalCount;
+            _pageItems = result.Items;
+            return new TableData<ProductBrandPrintCodeRow>
+            {
+                TotalItems = result.TotalCount,
+                Items = result.Items
+            };
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"查询失败：{ex.Message}", Severity.Error);
+            TotalCount = 0;
+            _pageItems = [];
+            return new TableData<ProductBrandPrintCodeRow> { TotalItems = 0, Items = [] };
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+
+    private async Task ExportExcelAsync()
+    {
+        if (IsExporting) return;
+        IsExporting = true;
+        try
+        {
+            List<ProductBrandPrintCodeRow> rows;
+            if (_selected.Count > 0)
+            {
+                rows = _selected.Values.OrderByDescending(x => x.ID).ToList();
+            }
+            else
+            {
+                if (!HasFilter())
+                {
+                    SnackbarHelper.Show("请勾选记录，或填写条件后导出全部", Severity.Warning);
+                    return;
+                }
+
+                rows = await Task.Run(() => _bll.QueryAll(
+                    ProductionNo,
+                    SerialNo,
+                    SapNo,
+                    Model,
+                    PartNo,
+                    CreateFrom,
+                    CreateTo));
+            }
+
+            if (rows.Count == 0)
+            {
+                SnackbarHelper.Show("没有可导出的数据", Severity.Info);
+                return;
+            }
+
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("打印码");
+
+            string[] headers =
+            [
+                "ID", "生产订单", "流水", "序列号SerialNo", "销售订单", "型号", "PartNo",
+                "生产日期", "Rev", "IPX6", "Input", "Maxload", "创建时间"
+            ];
+            for (int c = 0; c < headers.Length; c++)
+                ws.Cell(1, c + 1).Value = headers[c];
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                int row = i + 2;
+                ws.Cell(row, 1).Value = r.ID;
+                ws.Cell(row, 2).Value = r.ProductionNo ?? "";
+                ws.Cell(row, 3).Value = r.SerialNumber ?? "";
+                ws.Cell(row, 4).Value = r.SerialNo ?? "";
+                ws.Cell(row, 5).Value = r.SAPNo ?? "";
+                ws.Cell(row, 6).Value = r.Model ?? "";
+                ws.Cell(row, 7).Value = r.PartNo ?? "";
+                ws.Cell(row, 8).Value = r.ProdDate ?? "";
+                ws.Cell(row, 9).Value = r.RevNo ?? "";
+                ws.Cell(row, 10).Value = r.IPX6 ?? "";
+                ws.Cell(row, 11).Value = r.Input ?? "";
+                ws.Cell(row, 12).Value = r.Maxload ?? "";
+                ws.Cell(row, 13).Value = r.Createtime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "";
+            }
+
+            ws.SheetView.FreezeRows(1);
+            ws.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var base64 = Convert.ToBase64String(stream.ToArray());
+            string fileName = $"铭牌打印码_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            await JS.InvokeVoidAsync("blazorDownloadExcel", fileName, base64);
+
+            string tip = _selected.Count > 0
+                ? $"已导出勾选的 {rows.Count} 条"
+                : $"未勾选，已按条件导出全部 {rows.Count} 条";
+            SnackbarHelper.Show(tip, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"导出失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsExporting = false;
+        }
+    }
+}

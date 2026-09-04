@@ -1,0 +1,145 @@
+﻿@page "/LabelPrintForSL"
+<MudContainer MaxWidth="MaxWidth.ExtraLarge">
+    <MudPaper Class="pa-4 mt-5" Elevation="3" Width="100%">
+        <MudStack>
+            <MudCard Class="pa-2">
+                <MudText Typo="Typo.h6">一、输入生产订单</MudText>
+                <MudGrid >
+                    <MudItem xs="12" md="8">
+                        <MudStack Spacing="1">
+                            <KeypadTarget Label="生产订单号" @bind-Value="ProdNo"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            <KeypadTarget Label="打印张数" @bind-Value="PaperNum"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudStack Row="true" Style="width: 100%; height: 80%;">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont flex-grow-1"
+                                       Style="height: 100%;"
+                                       Disabled="@IsPrinting">
+                                @(IsPrinting ? "查询中..." : "查询")
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" Class="AutoFont flex-grow-1"
+                                       Style="height: 100%;">
+                                清空
+                            </MudButton>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudCard>
+            <MudCard Class="pa-2" Style="height: 100px">
+                <MudText Typo="Typo.h6" >二、确认订单信息</MudText>
+            </MudCard>
+            <MudCard Class="pa-2">
+                <MudText Typo="Typo.h6">三、输入装箱数量并打印</MudText>
+                <MudGrid Spacing="1">
+                    <MudItem xs="12" md="5">
+                        <MudGrid Spacing="1" Class="d-flex align-center">
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">请选择打印机：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">请选择组别：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">打印起始值：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <MudStack Row="true" Class="d-flex align-center">
+                                    <KeypadTarget Label="" @bind-Value="PaperNum"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                                    -
+                                    <KeypadTarget Label="" @bind-Value="PaperNum"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">软件代码：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                        </MudGrid>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudGrid Spacing="1" Class="d-flex align-center">
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">版本：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">产品编码：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">补打条码：</MudText>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="2">
+                                <KeypadTarget  @bind-Value="ProdNo" Label="补打数量"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudText Typo="Typo.subtitle1" Align="Align.Right">高低压：</MudText>
+                            </MudItem>
+                            <MudItem xs="8">
+                                <KeypadTarget  @bind-Value="ProdNo"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                            </MudItem>
+                        </MudGrid>
+                    </MudItem>
+                    <MudItem xs="12" md="3" 
+                             Class="d-flex" 
+                             Style="min-height: 200px;">
+                        <MudStack Spacing="1" 
+                                  Class="flex-grow-1 d-flex flex-column">
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Warning" 
+                                       Class="flex-grow-1">
+                                直接打印
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Warning" 
+                                       Class="flex-grow-1">
+                                条码补打
+                            </MudButton>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudCard>
+            <MudCard>
+                <OperationLog Content="@PrintMessages" Title="在此输出信息" HeightPx="180"/>
+            </MudCard>
+        </MudStack>
+    </MudPaper>
+    
+</MudContainer>
+
+
+@code {
+    string PrintMessages { get; set; } = string.Empty;
+    string ProdNo { get; set; } = string.Empty;
+    string PaperNum { get; set; } = string.Empty;
+    bool IsPrinting { get; set; }
+}

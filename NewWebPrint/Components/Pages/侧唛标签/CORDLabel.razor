@@ -1,4 +1,4 @@
-﻿@page "/CORDLabel"
+@page "/CORDLabel"
 @rendermode InteractiveServer
 @inject SnackbarHelper SnackbarHelper
 @inject LocalAgentPrinterBootstrap PrinterBootstrap
@@ -76,7 +76,6 @@
                     <MudItem xs="12" md="6">
                         <MudTextField @bind-Value="batch"
                                       Label="批次"
-                                      ReadOnly="true"
                                       Variant="Variant.Outlined"
                                       Class="readonly-field"
                                       FullWidth="true"/>
@@ -86,15 +85,13 @@
                     <MudItem xs="12" md="6">
                         <MudTextField @bind-Value="packingDate"
                                       Label="打包日期 (yyMMdd)"
-                                      ReadOnly="true"
                                       Variant="Variant.Outlined"
-                                      Class="readonly-field"
                                       FullWidth="true"/>
                     </MudItem>
 
                     <!-- 数量 -->
                     <MudItem xs="12" md="6">
-                        <MudTextField Value="@(CurrentCORDInfo?.Quantity.ToString() ?? string.Empty)"
+                        <MudTextField @bind-Value="quantity"
                                       Label="打包数量"
                                       Variant="Variant.Outlined"
                                       FullWidth="true"/>
@@ -344,6 +341,7 @@
     private void OnCordSelected(CORDInfo? selected)
     {
         WeightStandard = selected is null ? "" : selected.PackageWeight.ToString("0.##");
+        quantity = selected is null ? "" : selected.Quantity.ToString();
         if (!_isSerialOpen)
             WeightActual = "";
     }
@@ -533,6 +531,12 @@ SELECT
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(quantity))
+        {
+            SnackbarHelper.Show("打包数量为空", Severity.Warning);
+            return;
+        }
+
         var (ok, w, h) = TryParsePaper(PaperSize);
         if (!ok || w <= 0 || h <= 0)
         {
@@ -552,10 +556,13 @@ SELECT
         if (string.IsNullOrWhiteSpace(weightForPrint))
             weightForPrint = CurrentCORDInfo.PackageWeight.ToString("0.##");
 
+        var (exporterText, exporterAddressText, importerText, importerAddressText) =
+            GetCordAddressLines(CurrentCORDInfo.FactoryType);
+
         string qrCodeString =
-            $"LD Order Number: {ldOrder}{Environment.NewLine}LD Part Number: {CurrentCORDInfo.LDPartNumber}{Environment.NewLine}Batch/Lot Number: {batch}{Environment.NewLine}Packing Date: {packingDate}{Environment.NewLine}Quantity: {CurrentCORDInfo.Quantity}";
+            $"{ldOrder}%{CurrentCORDInfo.LDPartNumber}%{batch}%{packingDate}%{quantity}";
         // string qrCodeString =
-        //     $"{ldOrder}%{CurrentCORDInfo.LDPartNumber}%{batch}%{packingDate}%{CurrentCORDInfo.Quantity}";
+        //     $"LD Order Number: {ldOrder}{Environment.NewLine}LD Part Number: {CurrentCORDInfo.LDPartNumber}{Environment.NewLine}Batch/Lot Number: {batch}{Environment.NewLine}Packing Date: {packingDate}{Environment.NewLine}Quantity: {quantity}";
         var layout = new PrintLayoutModel
         {
             PrinterName = SelectedPrinter,
@@ -570,395 +577,448 @@ SELECT
             {
                 new PrintBlock
                 {
-                    Name = "Block 1",
+                    Name = "二维码1",
                     X = 3f,
-                    Y = 6f,
-                    Width = 43f,
-                    Height = 43f,
+                    Y = 3f,
+                    Width = 37f,
+                    Height = 35f,
                     ShowBorder = false,
-                    Qr = new QrElement()
+                    Qr = new QrElement
                     {
-                        Value = qrCodeString
-                    }
+                        Value = qrCodeString,
+                        ErrorCorrection = "M",
+                        SafeMarginMm = 1f,
+                        DigitFontSizePt = 6f,
+                        DigitOffsetYMm = 0f,
+                    },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 2",
-                    X = 48f,
-                    Y = 6f,
+                    Name = "文本1",
+                    X = 40f,
+                    Y = 3f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "LD Order Number:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 3",
-                    X = 48f,
-                    Y = 12f,
+                    Name = "文本1_copy(1)",
+                    X = 40f,
+                    Y = 8f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "LD Part Number:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 4",
-                    X = 48f,
-                    Y = 18f,
+                    Name = "文本1_copy(2)",
+                    X = 40f,
+                    Y = 13f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "JC Part Number:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 5",
-                    X = 48f,
-                    Y = 24f,
+                    Name = "文本1_copy(3)",
+                    X = 40f,
+                    Y = 18f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "Revision Number:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 6",
-                    X = 48f,
-                    Y = 30f,
+                    Name = "文本1_copy(4)",
+                    X = 40f,
+                    Y = 23f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "Batch/Lot Number:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 7",
-                    X = 48f,
-                    Y = 36f,
+                    Name = "文本1_copy(5)",
+                    X = 40f,
+                    Y = 28f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "Packing Date:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 8",
-                    X = 48f,
-                    Y = 42f,
+                    Name = "文本1_copy(6)",
+                    X = 40f,
+                    Y = 33f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "Package Quantity:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 9",
-                    X = 48f,
-                    Y = 48f,
+                    Name = "文本1_copy(7)",
+                    X = 40f,
+                    Y = 38f,
                     Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "Package Weight:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 10",
+                    Name = "LD Order Number:",
+                    X = 68f,
+                    Y = 3f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = ldOrder,
+                        FontName = "Arial",
+                        FontSize = 8f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "LD Part Number:",
+                    X = 68f,
+                    Y = 8f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.LDPartNumber,
+                        FontName = "Arial",
+                        FontSize = 8f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "JC Part Number:",
+                    X = 68f,
+                    Y = 13f,
+                    Width = 29f,
+                    Height = 5f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = CurrentCORDInfo.JCPartNumber,
+                        FontName = "Arial",
+                        FontSize = 8f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本17",
                     X = 3f,
-                    Y = 52f,
-                    Width = 37f,
+                    Y = 39f,
+                    Width = 27f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = "LD Description:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "LD Description:",
+                    Name = "LD Description value",
                     X = 3f,
-                    Y = 58f,
+                    Y = 43f,
                     Width = 94f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = CurrentCORDInfo.LDPartName,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "Block 12",
+                    Name = "PS diode note",
                     X = 3f,
-                    Y = 64f,
-                    Width = 37f,
-                    Height = 5f,
-                    ShowBorder = false,
-                    Text = new TextElement
-                    {
-                        Content = "Supplier Name:",
-                        FontName = "SimSun",
-                        FontSize = 9f,
-                        Bold = true,
-                        Align = "left",
-                        VerticalAlign = "middle"
-                    },
-                },
-                new PrintBlock
-                {
-                    Name = "Supplier Name:",
-                    X = 3f,
-                    Y = 70f,
+                    Y = 48.5f,
                     Width = 94f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = CurrentCORDInfo.SupplierName,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        Content = ShouldShowDiodePsNote(CurrentCORDInfo)
+                            ? "PS:This batch uses new diode 30714332."
+                            : "",
+                        FontName = "Arial",
+                        FontSize = 10f,
                         Bold = true,
+                        Italic = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "LD Order Number",
-                    X = 77f,
-                    Y = 6f,
-                    Width = 20f,
-                    Height = 5f,
+                    Name = "文本17_copy(4)",
+                    X = 3f,
+                    Y = 59f,
+                    Width = 94f,
+                    Height = 4f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = ldOrder,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        Content = exporterText,
+                        FontName = "Arial",
+                        FontSize = 7f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "LD Part Number:",
-                    X = 77f,
-                    Y = 12f,
-                    Width = 20f,
-                    Height = 5f,
+                    Name = "文本17_copy(5)",
+                    X = 3f,
+                    Y = 69f,
+                    Width = 94f,
+                    Height = 4f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = CurrentCORDInfo.LDPartNumber,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        Content = importerText,
+                        FontName = "Arial",
+                        FontSize = 7f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
-                    Name = "JC Part Number:",
-                    X = 77f,
-                    Y = 18f,
-                    Width = 20f,
-                    Height = 5f,
+                    Name = "文本17_copy(6)",
+                    X = 3f,
+                    Y = 63f,
+                    Width = 94f,
+                    Height = 6f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = CurrentCORDInfo.JCPartNumber,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        Content = exporterAddressText,
+                        FontName = "Arial",
+                        FontSize = 7f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
+                },
+                new PrintBlock
+                {
+                    Name = "文本17_copy(7)",
+                    X = 3f,
+                    Y = 73f,
+                    Width = 94f,
+                    Height = 4f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = importerAddressText,
+                        FontName = "Arial",
+                        FontSize = 7f,
+                        Bold = true,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "矩形1",
+                    X = 2f,
+                    Y = 2f,
+                    Width = 96f,
+                    Height = 77f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
                 },
                 new PrintBlock
                 {
                     Name = "Revision Number:",
-                    X = 77f,
-                    Y = 24f,
-                    Width = 20f,
+                    X = 68f,
+                    Y = 18f,
+                    Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = CurrentCORDInfo.RevisionNumber,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
                     Name = "Batch/Lot Number:",
-                    X = 77f,
-                    Y = 30f,
-                    Width = 20f,
+                    X = 68f,
+                    Y = 23f,
+                    Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = batch,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
                     Name = "Packing Date:",
-                    X = 77f,
-                    Y = 36f,
-                    Width = 20f,
+                    X = 68f,
+                    Y = 28f,
+                    Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = packingDate,
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
                     Name = "Package Quantity:",
-                    X = 77f,
-                    Y = 42f,
-                    Width = 20f,
+                    X = 68f,
+                    Y = 33f,
+                    Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = Convert.ToString(CurrentCORDInfo.Quantity),
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        Content = quantity,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
                 new PrintBlock
                 {
                     Name = "Package Weight:",
-                    X = 77f,
-                    Y = 48f,
-                    Width = 20f,
+                    X = 68f,
+                    Y = 38f,
+                    Width = 29f,
                     Height = 5f,
                     ShowBorder = false,
                     Text = new TextElement
                     {
                         Content = weightForPrint + "KG",
-                        FontName = "SimSun",
-                        FontSize = 9f,
+                        FontName = "Arial",
+                        FontSize = 8f,
                         Bold = true,
                         Align = "left",
-                        VerticalAlign = "middle"
+                        VerticalAlign = "middle",
                     },
                 },
-                new PrintBlock
-                {
-                    Name = "Block 22",
-                    X = 0f,
-                    Y = 0f,
-                    Width = 100f,
-                    Height = 80f,
-                    ShowBorder = true,
-                    Text = new TextElement
-                    {
-                        Content = "",
-                        FontName = "Arial",
-                        FontSize = 6f,
-                        Bold = false,
-                        Align = "left",
-                        VerticalAlign = "middle"
-                    },
-                }
             }
         };
 
@@ -992,10 +1052,41 @@ SELECT
         }
     }
 
+    /// <summary>
+    /// 按工厂类型返回进出口/线性侧唛地址四行（标点已英文化）。
+    /// </summary>
+    static (string Exporter, string ExporterAddress, string Importer, string ImporterAddress)
+        GetCordAddressLines(string? factoryType)
+    {
+        bool isImportExport = (factoryType ?? "").Contains("进出口");
+        if (isImportExport)
+        {
+            return (
+                "Exporter: XINCHANG JIECANG IMPORT AND EXPORT CO., LTD",
+                "Address: Xintao Road Qixing Street, Xinchang County,Zhejiang Province,China",
+                "Importer: J-STAR MOTION,Hungary KFT.",
+                "Address: Füredi utca 103,7400 Kaposvár, Hungary");
+        }
+
+        return (
+            "Exporter: Zhejiang Jiecang Linear Motion Technology Co., Ltd.",
+            "Address: No2, Laisheng Road, Qixing Street,XINCHANG COUNTY,ZHEJIANG,CHINA",
+            "Importer: J-STAR MOTION Hungary KFT.",
+            "Address: Füredi utca 103,7400 Kaposvár, Hungary");
+    }
+
+    static bool ShouldShowDiodePsNote(CORDInfo? info)
+    {
+        if (info is null) return false;
+        return string.Equals(info.JCPartNumber?.Trim(), "20701391", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(info.LDPartNumber?.Trim(), "20701391", StringComparison.OrdinalIgnoreCase);
+    }
+
     class CORDInfo
     {
         public CORDInfo(string jCPartNumber, string supplierName, string lDPartNumber,
-            string lDPartName, string revisionNumber, double packageWeight, int quantity)
+            string lDPartName, string revisionNumber, double packageWeight, int quantity,
+            string factoryType = "线性")
         {
             JCPartNumber = jCPartNumber;
             SupplierName = supplierName;
@@ -1004,6 +1095,7 @@ SELECT
             RevisionNumber = revisionNumber;
             PackageWeight = packageWeight;
             Quantity = quantity;
+            FactoryType = string.IsNullOrWhiteSpace(factoryType) ? "线性" : factoryType;
         }
 
         public static CORDInfo From(CordListDto d)
@@ -1015,7 +1107,8 @@ SELECT
                 d.LDPartName ?? "",
                 d.RevisionNumber ?? "",
                 (double)(d.PackageWeight ?? 0),
-                d.Quantity ?? 0);
+                d.Quantity ?? 0,
+                d.FactoryType ?? "线性");
         }
 
         public string JCPartNumber { get; set; }
@@ -1025,6 +1118,7 @@ SELECT
         public string RevisionNumber { get; set; }
         public double PackageWeight { get; set; }
         public int Quantity { get; set; }
+        public string FactoryType { get; set; } = "线性";
         public string Unit { get; set; } = "KG";
     }
 

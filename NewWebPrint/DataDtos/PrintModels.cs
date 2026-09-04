@@ -94,6 +94,7 @@ public class TextElement
     public string FontName { get; set; } = "Arial";
     public float FontSize { get; set; } = 6f;
     public bool Bold { get; set; }
+    public bool Italic { get; set; }
     public string Align { get; set; } = "left";
     public string VerticalAlign { get; set; } = "middle";
     public bool AutoFit { get; set; }

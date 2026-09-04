@@ -23,6 +23,7 @@ public class JCloginDbContext : DbContext
             e.Property(x => x.SupplierName).HasMaxLength(256);
             e.Property(x => x.LDPartNumber).HasMaxLength(128);
             e.Property(x => x.LDPartName).HasMaxLength(256);
+            e.Property(x => x.FactoryType).HasMaxLength(32);
             e.Property(x => x.RevisionNumber).HasMaxLength(32);
         });
     }

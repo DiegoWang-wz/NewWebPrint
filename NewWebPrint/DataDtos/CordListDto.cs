@@ -10,6 +10,8 @@ public class CordListDto
     public string? SupplierName { get; set; }
     public string? LDPartNumber { get; set; }
     public string? LDPartName { get; set; }
+    /// <summary>工厂类型：线性 / 进出口</summary>
+    public string? FactoryType { get; set; }
     public string? RevisionNumber { get; set; }
     public float? PackageWeight { get; set; }
     public int? Quantity { get; set; }

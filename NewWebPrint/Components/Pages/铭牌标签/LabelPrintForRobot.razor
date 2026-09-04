@@ -11,10 +11,9 @@
         <MudGrid GutterSize="2">
             <MudItem xs="12" md="4">
                 <MudTextField @bind-Value="MaterialNo"
-                              Label="料号信息（10 或 11 位）"
+                              Label="料号信息"
                               Variant="Variant.Outlined"
                               Margin="Margin.Dense"
-                              MaxLength="11"
                               Immediate="true"
                               HelperText="示例：YBCDJ00115"/>
             </MudItem>
@@ -229,11 +228,6 @@
     {
         error = string.Empty;
         var mat = (MaterialNo ?? string.Empty).Trim();
-        if (mat.Length is not (10 or 11))
-        {
-            error = "料号信息须为 10 或 11 位";
-            return false;
-        }
 
         if (string.IsNullOrWhiteSpace(MaterialVersion) || MaterialVersion.Trim().Length != 1)
         {
