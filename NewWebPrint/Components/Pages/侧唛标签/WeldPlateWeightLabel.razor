@@ -1,0 +1,513 @@
+@page "/WeldPlateWeightLabel"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using System.Globalization
+@using NewWebPrint.Utilities
+@implements IAsyncDisposable
+
+<div class="cord-page">
+    <MudGrid Spacing="2" Class="cord-main-grid">
+        <MudItem xs="12" md="7" Class="d-flex">
+            <MudPaper Class="section-panel left-panel pa-3">
+                <MudText Typo="Typo.h6" Class="mb-2">焊板组过磅标签</MudText>
+
+                <MudGrid Spacing="1">
+                    <MudItem xs="12">
+                        <form @onsubmit="OnOuterBoxEnter" @onsubmit:preventDefault>
+                            <MudTextField @ref="_outerBoxField"
+                                          @bind-Value="OuterBoxBarcode"
+                                          Label="外箱条码"
+                                          Variant="Variant.Outlined"
+                                          FullWidth="true"
+                                          Immediate="true"
+                                          OnKeyUp="OnOuterBoxKeyUp"/>
+                        </form>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="WeightActual"
+                                      Label="实际称重 (KG)"
+                                      ReadOnly="true"
+                                      Variant="Variant.Outlined"
+                                      Class="readonly-field"
+                                      FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" md="6" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                   OnClick="EnableWeight"
+                                   FullWidth="true"
+                                   Style="height:56px;">
+                            @(_isSerialOpen ? "断开称重器" : "开启称重")
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" Class="d-flex align-center">
+                        <MudText Typo="Typo.body2"
+                                 Class="weight-status-text"
+                                 Style="@($"color:{GetWeightStatusColor()}")">
+                            @GetWeightStatusText()
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="5" Class="d-flex">
+            <MudPaper Class="section-panel right-panel pa-3">
+                <div class="log-panel mb-2">
+                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="280"/>
+                </div>
+
+                <div class="print-panel">
+                    <MudText Typo="Typo.h6" Class="mb-2">打印设置</MudText>
+
+                    <MudGrid Spacing="1">
+                        <MudItem xs="12">
+                            <PrinterSelector Printers="Printers"
+                                             Label="选择打印机"
+                                             @bind-SelectedPrinter="SelectedPrinter"/>
+                        </MudItem>
+
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="PrintCount"
+                                             Label="打印数量"
+                                             Variant="Variant.Outlined"
+                                             Min="1"
+                                             FullWidth="true"/>
+                        </MudItem>
+                        <MudItem xs="12" md="8" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       OnClick="PrintSubmit"
+                                       Disabled="@(IsPrinting || !_isSerialOpen)"
+                                       Size="Size.Large"
+                                       FullWidth="true"
+                                       Style="height:56px; font-size:1.1rem; font-weight:600;">
+                                @(IsPrinting ? "打印中..." : "打印")
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<style>
+    .cord-page {
+        padding: 12px;
+    }
+
+    .cord-main-grid {
+        align-items: stretch;
+    }
+
+    .section-panel {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .right-panel .log-panel {
+        flex: 1;
+        min-height: 0;
+    }
+
+    .right-panel .print-panel {
+        flex: 0 0 auto;
+    }
+
+    .readonly-field .mud-input-slot {
+        background: #f7f7f7 !important;
+        border-radius: 4px;
+    }
+
+    .readonly-field .mud-input-outlined-border {
+        border-style: dashed !important;
+    }
+
+    .weight-status-text {
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+    }
+</style>
+
+@code {
+    const float PaperWidthMm = 100f;
+    const float PaperHeightMm = 80f;
+    const string PrinterStorageKey = "WeldPlateWeightLabel_printer";
+
+    MudTextField<string>? _outerBoxField;
+    string OuterBoxBarcode { get; set; } = "";
+    string WeightActual { get; set; } = "";
+    bool IsPrinting { get; set; }
+    string? SelectedPrinter { get; set; }
+    List<string> Printers { get; set; } = new();
+    string PrintMessages { get; set; } = string.Empty;
+    int PrintCount = 1;
+    bool _isSerialOpen;
+    bool _hasWeightData;
+    DotNetObjectReference<WeldPlateWeightLabel>? _objRef;
+
+    protected override void OnInitialized()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    void AppendLog(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        PrintMessages = (PrintMessages ?? string.Empty) + line + Environment.NewLine;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task OnOuterBoxKeyUp(KeyboardEventArgs e)
+    {
+        var isEnter = string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(e.Code, "Enter", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(e.Code, "NumpadEnter", StringComparison.OrdinalIgnoreCase);
+        if (!isEnter) return;
+        await PrintSubmit();
+    }
+
+    Task OnOuterBoxEnter() => PrintSubmit();
+
+    async Task EnableWeight()
+    {
+        try
+        {
+            if (_isSerialOpen)
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+                _isSerialOpen = false;
+                _hasWeightData = false;
+                WeightActual = "";
+                SnackbarHelper.Show("称重器已停止", Severity.Info);
+                AppendLog("WebSerial 称重连接已关闭");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var baud = await JS.InvokeAsync<string>("serialInterop.getPreferredScaleBaud");
+            var br = int.TryParse(baud, out var n) ? n : 19200;
+            var config = new
+            {
+                baudRate = baud,
+                parity = "none",
+                dataBits = "8",
+                stopBits = "1",
+                autoScaleBaud = br is 9600 or 19200
+            };
+            var success = await JS.InvokeAsync<bool>("serialInterop.openPort", config, _objRef);
+            if (!success)
+            {
+                SnackbarHelper.Show("称重器连接失败或已取消", Severity.Error);
+                AppendLog("WebSerial 称重连接失败或已取消");
+                return;
+            }
+
+            _isSerialOpen = true;
+            SnackbarHelper.Show("称重器连接成功", Severity.Success);
+            AppendLog("WebSerial 称重连接成功");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"称重器连接异常: {ex.Message}", Severity.Error);
+            AppendLog($"称重器连接异常: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ReceiveData(string data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+        WeightActual = data.Trim();
+        _hasWeightData = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnError(string errorMessage)
+    {
+        _isSerialOpen = false;
+        _hasWeightData = false;
+        AppendLog($"串口错误: {errorMessage}");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    string GetWeightStatusText()
+    {
+        if (!_isSerialOpen) return "请连接称重器";
+        if (!_hasWeightData) return "等待称重数据";
+        return string.IsNullOrWhiteSpace(FormatWeightLabel(WeightActual)) ? "重量无效" : "重量正常";
+    }
+
+    string GetWeightStatusColor()
+    {
+        if (!_isSerialOpen) return "#ef6c00";
+        if (!_hasWeightData) return "#ef6c00";
+        return string.IsNullOrWhiteSpace(FormatWeightLabel(WeightActual)) ? "#c62828" : "#1b5e20";
+    }
+
+    static string FormatWeightLabel(string? raw)
+    {
+        var s = (raw ?? "").Trim();
+        if (string.IsNullOrEmpty(s)) return "";
+        var cleaned = s.Replace("KG", "", StringComparison.OrdinalIgnoreCase).Trim();
+        if (double.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var kg)
+            || double.TryParse(cleaned, NumberStyles.Any, CultureInfo.CurrentCulture, out kg))
+            return $"{kg:0.###} Kg";
+        return "";
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+
+        if (!_isSerialOpen)
+        {
+            SnackbarHelper.Show("请连接称重器", Severity.Warning);
+            AppendLog("打印拦截：请连接称重器");
+            return;
+        }
+
+        var barcode = (OuterBoxBarcode ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(barcode))
+        {
+            SnackbarHelper.Show("请输入外箱条码", Severity.Warning);
+            AppendLog("打印拦截：外箱条码为空");
+            await FocusOuterBoxAsync();
+            return;
+        }
+
+        var weightText = FormatWeightLabel(WeightActual);
+        if (string.IsNullOrWhiteSpace(weightText))
+        {
+            SnackbarHelper.Show("尚未获取有效重量", Severity.Warning);
+            AppendLog("打印拦截：尚未获取有效重量");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPrinter))
+        {
+            SnackbarHelper.Show("请先选择打印机", Severity.Warning);
+            return;
+        }
+
+        if (PrintCount < 1)
+        {
+            SnackbarHelper.Show("打印数量无效", Severity.Error);
+            return;
+        }
+
+        var dateText = DateTime.Now.ToString("yyyy年M月d日 HH:mm");
+        var layout = new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = PaperWidthMm,
+            PaperHeightMm = PaperHeightMm,
+            Copies = 1,
+            StartValue = 1,
+            PrintCount = PrintCount,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            Blocks = new List<PrintBlock>
+            {
+                new PrintBlock
+                {
+                    Name = "外箱码",
+                    X = 19f,
+                    Y = 6f,
+                    Width = 78f,
+                    Height = 31f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = barcode,
+                        FontName = "Arial",
+                        FontSize = 17f,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                        AutoFit = true,
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "重量",
+                    X = 19f,
+                    Y = 52f,
+                    Width = 78f,
+                    Height = 19f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = weightText,
+                        FontName = "Arial",
+                        FontSize = 17f,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "日期时间",
+                    X = 19f,
+                    Y = 37f,
+                    Width = 78f,
+                    Height = 15f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = dateText,
+                        FontName = "Arial",
+                        FontSize = 15f,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本4",
+                    X = 4f,
+                    Y = 6f,
+                    Width = 15f,
+                    Height = 31f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = "外箱：",
+                        FontName = "Arial",
+                        FontSize = 11f,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本4_copy(1)",
+                    X = 4f,
+                    Y = 37f,
+                    Width = 15f,
+                    Height = 15f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = "日期：",
+                        FontName = "Arial",
+                        FontSize = 11f,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本4_copy(2)",
+                    X = 4f,
+                    Y = 52f,
+                    Width = 15f,
+                    Height = 19f,
+                    ShowBorder = true,
+                    BorderStyle = "Solid",
+                    DashLengthMm = 2f,
+                    DashGapMm = 1f,
+                    Text = new TextElement
+                    {
+                        Content = "重量：",
+                        FontName = "Arial",
+                        FontSize = 11f,
+                        Align = "left",
+                        VerticalAlign = "middle",
+                    },
+                }
+            }
+        };
+
+        IsPrinting = true;
+        AppendLog($"发送打印：{SelectedPrinter}  外箱:{barcode}  {weightText}  {dateText}");
+        try
+        {
+            await PrinterHelper.PrintLayoutAsync(JS, layout);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, PrinterStorageKey);
+
+            AppendLog("打印提交成功。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            OuterBoxBarcode = "";
+            await FocusOuterBoxAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task FocusOuterBoxAsync()
+    {
+        try
+        {
+            if (_outerBoxField is not null)
+                await _outerBoxField.FocusAsync();
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isSerialOpen)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("serialInterop.closePort");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        _objRef?.Dispose();
+    }
+}

@@ -1,0 +1,484 @@
+@page "/LabelPrintForWh"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalStorageHelper LocalStorage
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@using NewWebPrint.DataDtos
+@using NewWebPrint.Utilities
+
+<MudStack Spacing="2" Class="pa-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudGrid GutterSize="2">
+            <MudItem xs="12">
+                <MudTabs Elevation="0" Rounded="true"
+                         @bind-ActivePanelIndex="ActiveTemplateIndex">
+                    <MudTabPanel Text="100×80" />
+                    <MudTabPanel Text="35×21" />
+                </MudTabs>
+            </MudItem>
+
+            <MudItem xs="12" md="8">
+                <MudGrid GutterSize="2">
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="LocationCode"
+                                      Label="请输入仓位"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex align-center">
+                        <MudCheckBox T="bool" @bind-Value="Rotate90" Label="旋转90°" Dense="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="Description"
+                                      Label="请输入仓位描述"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="PrintCount"
+                                      Label="每条份数"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      FullWidth="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <PrinterSelector Printers="Printers" @bind-SelectedPrinter="SelectedPrinter" FullWidth="true" />
+                    </MudItem>
+                </MudGrid>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           OnClick="PrintSubmit"
+                           Disabled="@IsPrinting"
+                           FullWidth="true"
+                           Size="Size.Large"
+                           Style="min-height:120px; font-size:1.25rem; font-weight:600;">
+                    @(IsPrinting ? "打印中…" : "直接打印")
+                </MudButton>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">复制仓位以及仓位描述，在下方粘贴</MudText>
+                <MudTextField @bind-Value="PasteBuffer"
+                              @bind-Value:after="ApplyPasteToInputs"
+                              Placeholder="从邮件复制后在此粘贴（仓位 + 描述，每行一条）"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Lines="5"
+                              Immediate="true"
+                              FullWidth="true"
+                              Class="mb-2" />
+                <div class="d-flex gap-2 mb-2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="PasteFromClipboard">粘贴</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" OnClick="ClearPasteArea">清空粘贴区</MudButton>
+                </div>
+                <MudTable Items="Rows" Dense="true" Hover="true" Bordered="true" Striped="true" Elevation="0" Height="220px">
+                    <HeaderContent>
+                        <MudTh>仓位</MudTh>
+                        <MudTh>仓位描述</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="仓位">@context.Location</MudTd>
+                        <MudTd DataLabel="仓位描述">@context.Description</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.caption" Class="pa-2">粘贴识别后会填入上方仓位 / 仓位描述</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @if (IsPrinting)
+                {
+                    <MudPaper Outlined Class="pa-3 mb-2">
+                        <MudText Typo="Typo.body2">@PrintProgressLabel</MudText>
+                        <MudProgressLinear Value="@PrintProgressValue" Color="Color.Primary" Rounded Class="mt-1" />
+                    </MudPaper>
+                }
+                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="320" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudStack>
+
+@code {
+    const string PrinterStorageKey = "LabelPrintForWh_printer";
+
+    int ActiveTemplateIndex { get; set; }
+    List<string> Printers { get; set; } = [];
+    string? SelectedPrinter { get; set; }
+    string LocationCode { get; set; } = "";
+    string Description { get; set; } = "";
+    string PasteBuffer { get; set; } = "";
+    string PrintCount { get; set; } = "1";
+    bool Rotate90 { get; set; }
+    List<WhRow> Rows { get; set; } = [];
+
+    bool IsPrinting { get; set; }
+    int PrintProgressCurrent { get; set; }
+    int PrintProgressTotal { get; set; }
+    string PrintProgressLabel { get; set; } = "";
+    string PrintMessages { get; set; } = "";
+
+    string CurrentTemplate => ActiveTemplateIndex == 1 ? "35*21" : "100*80";
+    double PrintProgressValue =>
+        PrintProgressTotal > 0 ? 100d * PrintProgressCurrent / PrintProgressTotal : 0d;
+
+    sealed class WhRow
+    {
+        public string Location { get; set; } = "";
+        public string Description { get; set; } = "";
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success) return;
+        Printers = result.Printers.ToList();
+        SelectedPrinter = result.SelectedPrinter;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await PrinterBootstrap.TryLoadOnFirstRenderAsync(
+            firstRender,
+            PrinterStorageKey,
+            ApplyPrinterLoadResult,
+            () => InvokeAsync(StateHasChanged));
+    }
+
+    void ClearPasteArea()
+    {
+        PasteBuffer = "";
+        Rows = [];
+    }
+
+    static List<string> SplitLines(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        return text.Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n')
+            .Select(s => s.TrimEnd())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .ToList();
+    }
+
+    static bool LooksLikeHeader(string loc, string desc) =>
+        loc is "仓位" or "仓位码" or "location" or "Location"
+        && (string.IsNullOrWhiteSpace(desc) || desc is "描述" or "仓位描述" or "说明");
+
+    static (string Loc, string Desc) SplitTwoColumns(string line)
+    {
+        var parts = line.Split(['\t', ',', '，', ';', '；'], 2, StringSplitOptions.None);
+        var loc = parts[0].Trim();
+        var desc = parts.Length > 1 ? parts[1].Trim() : "";
+        return (loc, desc);
+    }
+
+    List<WhRow> ParsePasteText(string? text)
+    {
+        var lines = SplitLines(text);
+        var result = new List<WhRow>();
+        foreach (var line in lines)
+        {
+            var (loc, desc) = SplitTwoColumns(line);
+            if (string.IsNullOrWhiteSpace(loc)) continue;
+            result.Add(new WhRow { Location = loc, Description = desc });
+        }
+
+        if (result.Count > 0 && LooksLikeHeader(result[0].Location, result[0].Description))
+            result.RemoveAt(0);
+
+        return result;
+    }
+
+    void ApplyParsedRows(List<WhRow> parsed)
+    {
+        if (parsed.Count == 0) return;
+
+        Rows = parsed;
+        LocationCode = parsed[0].Location;
+        Description = parsed[0].Description;
+    }
+
+    void ApplyPasteToInputs()
+    {
+        var parsed = ParsePasteText(PasteBuffer);
+        ApplyParsedRows(parsed);
+    }
+
+    async Task PasteFromClipboard()
+    {
+        try
+        {
+            var text = await JS.InvokeAsync<string>("navigator.clipboard.readText");
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                SnackbarHelper.Show("剪贴板为空", Severity.Warning);
+                return;
+            }
+
+            PasteBuffer = text;
+            var parsed = ParsePasteText(text);
+            if (parsed.Count == 0)
+            {
+                SnackbarHelper.Show("未识别到仓位 / 仓位描述", Severity.Warning);
+                return;
+            }
+
+            ApplyParsedRows(parsed);
+            SnackbarHelper.Show($"已识别 {parsed.Count} 条，已填入仓位 / 仓位描述", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"读取剪贴板失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    void AppendLog(string message) =>
+        PrintMessages = OperationLogHelper.Append(PrintMessages, message);
+
+    async Task BeginPrintingUiAsync()
+    {
+        IsPrinting = true;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = "准备打印…";
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+    }
+
+    async Task EndPrintingUiAsync()
+    {
+        IsPrinting = false;
+        PrintProgressCurrent = 0;
+        PrintProgressTotal = 0;
+        PrintProgressLabel = string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetPrintProgressAsync(int current, int total, string label)
+    {
+        PrintProgressCurrent = current;
+        PrintProgressTotal = Math.Max(0, total);
+        PrintProgressLabel = label;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    List<WhRow> ResolvePrintRows()
+    {
+        var fromPaste = ParsePasteText(PasteBuffer);
+        if (fromPaste.Count > 0)
+        {
+            Rows = fromPaste;
+            return fromPaste;
+        }
+
+        if (Rows.Count > 0)
+            return Rows.ToList();
+
+        var loc = LocationCode.Trim();
+        var desc = Description.Trim();
+        if (string.IsNullOrWhiteSpace(loc)) return [];
+        return [new WhRow { Location = loc, Description = desc }];
+    }
+
+    PrintLayoutModel BuildLayout(string location, string description, float widthMm, float heightMm, int copies)
+    {
+        var loc = location ?? "";
+        var desc = description ?? "";
+        var isSmall = CurrentTemplate == "35*21";
+
+        List<PrintBlock> blocks = isSmall
+            ?
+            [
+                new PrintBlock
+                {
+                    Name = "条形码1",
+                    X = 3f,
+                    Y = 3f,
+                    Width = 29f,
+                    Height = 6f,
+                    ShowBorder = false,
+                    Barcode = new BarcodeElement
+                    {
+                        Value = loc,
+                        SafeMarginMm = 0f,
+                        Format = "CODE_128",
+                        OffsetXMm = 0f,
+                        ShowTextBelow = false,
+                        DigitFontSizePt = 6f,
+                        DigitOffsetYMm = 0f,
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本1",
+                    X = 6f,
+                    Y = 10f,
+                    Width = 23f,
+                    Height = 4f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = loc,
+                        FontName = "SimSun",
+                        FontSize = 10f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本1_copy(1)",
+                    X = 6f,
+                    Y = 15f,
+                    Width = 23f,
+                    Height = 4f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = desc,
+                        FontName = "SimSun",
+                        FontSize = 10f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                }
+            ]
+            :
+            [
+                new PrintBlock
+                {
+                    Name = "条形码1",
+                    X = 6f,
+                    Y = 6f,
+                    Width = 88f,
+                    Height = 35f,
+                    ShowBorder = false,
+                    Barcode = new BarcodeElement
+                    {
+                        Value = loc,
+                        SafeMarginMm = 1f,
+                        Format = "CODE_128",
+                        OffsetXMm = 0f,
+                        ShowTextBelow = false,
+                        DigitFontSizePt = 6f,
+                        DigitOffsetYMm = 0f,
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本1",
+                    X = 4f,
+                    Y = 43f,
+                    Width = 93f,
+                    Height = 12f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = loc,
+                        FontName = "SimSun",
+                        FontSize = 25f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                },
+                new PrintBlock
+                {
+                    Name = "文本1_copy(1)",
+                    X = 4f,
+                    Y = 57f,
+                    Width = 93f,
+                    Height = 19f,
+                    ShowBorder = false,
+                    Text = new TextElement
+                    {
+                        Content = desc,
+                        FontName = "SimSun",
+                        FontSize = 25f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle",
+                    },
+                }
+            ];
+
+        return new PrintLayoutModel
+        {
+            PrinterName = SelectedPrinter,
+            PaperWidthMm = widthMm,
+            PaperHeightMm = heightMm,
+            Copies = copies,
+            StartValue = 1,
+            PrintCount = 1,
+            GapMm = null,
+            BorderThicknessMm = 0.4f,
+            IsRotate = Rotate90,
+            Blocks = blocks
+        };
+    }
+
+    async Task PrintSubmit()
+    {
+        if (IsPrinting) return;
+        if (!PrinterHelper.RequireSelectedPrinter(SelectedPrinter, SnackbarHelper)) return;
+
+        var paper = PrinterHelper.ParsePaperSize(CurrentTemplate, SnackbarHelper);
+        if (!paper.Success) return;
+
+        if (!PrinterHelper.TryParsePrintCount(PrintCount, out var copies, SnackbarHelper)) return;
+
+        var fromPaste = ParsePasteText(PasteBuffer).Count > 0 || Rows.Count > 0;
+        var jobs = ResolvePrintRows();
+        if (jobs.Count == 0)
+        {
+            SnackbarHelper.Show("请输入仓位，或先在粘贴区粘贴", Severity.Warning);
+            return;
+        }
+
+        var source = fromPaste ? "粘贴区" : "输入区";
+        var totalSteps = jobs.Count + 2;
+        await BeginPrintingUiAsync();
+        try
+        {
+            AppendLog($"按{source}打印，共 {jobs.Count} 条，模板 {CurrentTemplate}，每条 {copies} 份");
+            for (var i = 0; i < jobs.Count; i++)
+            {
+                var row = jobs[i];
+                await SetPrintProgressAsync(
+                    i + 1,
+                    totalSteps,
+                    $"正在提交 {i + 1}/{jobs.Count}：{row.Location}（模板 {CurrentTemplate}，{copies} 份）…");
+                AppendLog($"打印：仓位 {row.Location}，描述 {row.Description}，模板 {CurrentTemplate}，{copies} 份");
+
+                var layout = BuildLayout(row.Location, row.Description, paper.WidthMm, paper.HeightMm, copies);
+                await PrinterHelper.PrintLayoutAsync(JS, layout);
+            }
+
+            await SetPrintProgressAsync(jobs.Count + 1, totalSteps, "正在保存打印机设置…");
+            await PrinterHelper.SaveLastUsedPrinterAsync(LocalStorage, SelectedPrinter, PrinterStorageKey);
+
+            AppendLog($"打印提交成功，共 {jobs.Count} 条。");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+            await SetPrintProgressAsync(totalSteps, totalSteps, "打印任务已提交");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            await EndPrintingUiAsync();
+        }
+    }
+}

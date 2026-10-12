@@ -705,11 +705,11 @@
     int SelectedLwVariant { get; set; }
     /// <summary>是否在标签右上角打印 CE、WEEE 图（img1/img2）；各型号独立记忆，W8A 默认关。</summary>
     bool LwShowCertificationIcons { get; set; } = true;
-    string? LwName { get; set; } = "电动推杆";
-    string? LwDrawing { get; set; } = "GKV2803010011";
+    string? LwName { get; set; } = "推杆24/0500/155/50/D";
+    string? LwDrawing { get; set; } = "BZF0127-011";
     string? LwSupplierCode { get; set; } = "B12712";
     string? LwCustomerPrefix { get; set; } = "3ACET";
-    string? LwSupplierProduct { get; set; } = "201190540";
+    string? LwSupplierProduct { get; set; } = "201858525";
     string? LwBatch { get; set; } = "1";
     /// <summary>W*A-LW 专用内部条码（不入库 localStorage；打印成功后清空）。</summary>
     string? LwInternalBarcode { get; set; }
@@ -807,7 +807,7 @@
 
     static LwVariantDefaults LwDefaultsForVariant(int variant) =>
         variant == 0
-            ? new LwVariantDefaults("电动推杆", "GKV2803010011", "B12712", "3ACET", "201190540", "1", true)
+            ? new LwVariantDefaults("推杆24/0500/155/50/D", "BZF0127-011", "B12712", "3ACET", "201858525", "1", true)
             : new LwVariantDefaults("四驱电动推杆", "HAV1806350007", "B12712", "3ACET", "201663543", "3", false);
 
     string FormatPlateDate() =>
@@ -1117,6 +1117,32 @@
         var certDefault = d.ShowCertIcons ? "1" : "0";
         var cert = await LocalStorage.GetStringOrDefaultAsync(LwBundleStorageKey(variant, "showCert"), certDefault);
         LwShowCertificationIcons = cert != "0";
+
+        if (variant == 0)
+        {
+            var migrated = false;
+            if (string.Equals(LwName, "电动推杆", StringComparison.Ordinal))
+            {
+                LwName = d.Name;
+                migrated = true;
+            }
+
+            if (string.Equals(LwDrawing, "GKV2803010011", StringComparison.OrdinalIgnoreCase))
+            {
+                LwDrawing = d.Drawing;
+                migrated = true;
+            }
+
+            if (string.Equals(LwSupplierProduct, "201190540", StringComparison.Ordinal)
+                || string.Equals(LwSupplierProduct, "201858525201858525", StringComparison.Ordinal))
+            {
+                LwSupplierProduct = d.SupplierProduct;
+                migrated = true;
+            }
+
+            if (migrated)
+                await PersistLwVariantBundleAsync(0);
+        }
     }
 
     async Task TryMigrateLegacyLwToV0IfNeededAsync()
@@ -2554,6 +2580,15 @@
         string img2 = PrinterHelper.ImageFileToBase64(imagePath);
         var composite = LwCompositeDisplay();
 
+        var isW1a = SelectedLwVariant == 0;
+        var nameX = isW1a ? 9f : 12f;
+        var nameW = isW1a ? 30f : 18f;
+        var drawX = isW1a ? 9f : 12f;
+        var img1X = isW1a ? 31f : 30f;
+        var img2X = isW1a ? 35f : 34f;
+        var imgY = isW1a ? 9f : 4f;
+        var drawingLabel = isW1a ? "图号:" : "图号：";
+
         var list = new List<PrintBlock>
         {
             new PrintBlock
@@ -2586,7 +2621,7 @@
                 BorderStyle = "Solid",
                 Text = new TextElement
                 {
-                    Content = "图号：",
+                    Content = drawingLabel,
                     FontName = "Arial",
                     FontSize = 6.5f,
                     Bold = true,
@@ -2597,9 +2632,9 @@
             new PrintBlock
             {
                 Name = "name",
-                X = 12f,
+                X = nameX,
                 Y = 5f,
-                Width = 18f,
+                Width = nameW,
                 Height = 3f,
                 ShowBorder = false,
                 BorderStyle = "Solid",
@@ -2620,8 +2655,8 @@
             list.Add(new PrintBlock
             {
                 Name = "img1",
-                X = 30f,
-                Y = 4f,
+                X = img1X,
+                Y = imgY,
                 Width = 4f,
                 Height = 4f,
                 ShowBorder = false,
@@ -2643,8 +2678,8 @@
             list.Add(new PrintBlock
             {
                 Name = "img2",
-                X = 34f,
-                Y = 4f,
+                X = img2X,
+                Y = imgY,
                 Width = 4f,
                 Height = 4f,
                 ShowBorder = false,
@@ -2666,7 +2701,7 @@
             new PrintBlock
             {
                 Name = "draw",
-                X = 12f,
+                X = drawX,
                 Y = 9f,
                 Width = 25f,
                 Height = 3f,
