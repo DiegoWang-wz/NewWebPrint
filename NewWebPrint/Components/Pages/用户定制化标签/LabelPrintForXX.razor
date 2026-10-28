@@ -125,11 +125,6 @@
                                           Disabled="@(SelectedLabelRow != 3)" Class="selector-input"/>
                             <MudTextField @bind-Value="BoxPCS" Label="PCS" Variant="Variant.Outlined"
                                           Disabled="@(SelectedLabelRow != 3)" Class="selector-input"/>
-                            <MudCheckBox T="bool"
-                                         @bind-Value="IsSpecialLogoChecked"
-                                         Label="特殊logo"
-                                         Color="Color.Primary"
-                                         Disabled="@(SelectedLabelRow != 3)"/>
                         </div>
                     </MudRadioGroup>
                 </div>
@@ -362,7 +357,6 @@
     string BoxPrintStart { get; set; } = "";
     string BoxPrintEnd { get; set; } = "";
     string BoxPCS { get; set; } = "1";
-    bool IsSpecialLogoChecked { get; set; } = true;
 
     private SapEwmDynamicPayload? _data;
     string ProductionOrder { get; set; } = "102581769";
@@ -1092,22 +1086,7 @@
 
             var imagePath = Path.Combine(Env.WebRootPath, "Images/XX", "Vogels.png");
             string img1 = PrinterHelper.ImageFileToBase64(imagePath);
-            var imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
-            if (part0 == "RISE" && labelParts.Count > 1)
-            {
-                var riseModel = labelParts[1];
-                if (riseModel == "2000") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
-                else if (riseModel == "2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
-                else if (riseModel == "5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
-                else if (riseModel == "5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
-                else if (riseModel == "A154") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "A154.png");
-            }
-            else if (part0 == "RISE 2000") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
-            else if (part0 == "RISE 2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
-            else if (part0 == "RISE 5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
-            else if (part0 == "RISE 5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
-            else if (part0 == "RISE A154") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "A154.png");
-
+            string imagePath2 = ResolveXxProductImagePath(part0, labelParts);
             string img2 = PrinterHelper.ImageFileToBase64(imagePath2);
             layout = new PrintLayoutModel
             {
@@ -1305,181 +1284,113 @@
                     }
                 }
             };
-            if (IsSpecialLogoChecked)
-            {
-                layout.Blocks.Add(
-                    new PrintBlock
+            layout.Blocks.Add(
+                new PrintBlock
+                {
+                    Name = "Block 4",
+                    X = 55f,
+                    Y = 25f,
+                    Width = 50f,
+                    Height = 10f,
+                    ShowBorder = false,
+                    Text = new TextElement
                     {
-                        Name = "Block 4",
-                        X = 55f,
-                        Y = 25f,
-                        Width = 50f,
-                        Height = 10f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = part0,
-                            FontName = "Arial",
-                            FontSize = 18f,
-                            Bold = true,
-                            Align = "center",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
+                        Content = part0,
+                        FontName = "Arial",
+                        FontSize = 18f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle"
+                    },
+                }
+            );
 
-                layout.Blocks.Add(
-                    new PrintBlock
+            layout.Blocks.Add(
+                new PrintBlock
+                {
+                    Name = "Block 4",
+                    X = 55f,
+                    Y = 26f,
+                    Width = 50f,
+                    Height = 24f,
+                    ShowBorder = false,
+                    Text = new TextElement
                     {
-                        Name = "Block 4",
-                        X = 55f,
-                        Y = 26f,
-                        Width = 50f,
-                        Height = 24f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = part1 + "\n" + part2,
-                            FontName = "Arial",
-                            FontSize = 12f,
-                            Bold = true,
-                            Align = "center",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
+                        Content = part1 + "\n" + part2,
+                        FontName = "Arial",
+                        FontSize = 12f,
+                        Bold = true,
+                        Align = "center",
+                        VerticalAlign = "middle"
+                    },
+                }
+            );
 
-                var logo1Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo1.png");
-                var logo2Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo2.png");
-                var logo1 = PrinterHelper.ImageFileToBase64(logo1Path);
-                var logo2 = PrinterHelper.ImageFileToBase64(logo2Path);
+            var logo1Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo1.png");
+            var logo2Path = Path.Combine(Env.WebRootPath, "Images/XX", "logo2.png");
+            var logo1 = PrinterHelper.ImageFileToBase64(logo1Path);
+            var logo2 = PrinterHelper.ImageFileToBase64(logo2Path);
 
-                layout.Blocks.Add(
-                    new PrintBlock
+            layout.Blocks.Add(
+                new PrintBlock
+                {
+                    Name = "logo",
+                    X = 49f,
+                    Y = 44f,
+                    Width = 48f,
+                    Height = 16f,
+                    ShowBorder = false,
+                    Image = new ImageElement
                     {
-                        Name = "logo",
-                        X = 49f,
-                        Y = 44f,
-                        Width = 48f,
-                        Height = 16f,
-                        ShowBorder = false,
-                        Image = new ImageElement
-                        {
-                            Base64 = logo1,
-                            Fit = "contain",
-                            Align = "center",
-                            VerticalAlign = "middle",
-                            Opacity = 1f
-                        },
-                    }
-                );
+                        Base64 = logo1,
+                        Fit = "contain",
+                        Align = "center",
+                        VerticalAlign = "middle",
+                        Opacity = 1f
+                    },
+                }
+            );
 
-                layout.Blocks.Add(
-                    new PrintBlock
+            layout.Blocks.Add(
+                new PrintBlock
+                {
+                    Name = "logo2",
+                    X = 49f,
+                    Y = 61f,
+                    Width = 48f,
+                    Height = 18f,
+                    ShowBorder = false,
+                    Image = new ImageElement
                     {
-                        Name = "logo2",
-                        X = 49f,
-                        Y = 61f,
-                        Width = 48f,
-                        Height = 18f,
-                        ShowBorder = false,
-                        Image = new ImageElement
-                        {
-                            Base64 = logo2,
-                            Fit = "contain",
-                            Align = "center",
-                            VerticalAlign = "middle",
-                            Opacity = 1f
-                        },
-                    }
-                );
+                        Base64 = logo2,
+                        Fit = "contain",
+                        Align = "center",
+                        VerticalAlign = "middle",
+                        Opacity = 1f
+                    },
+                }
+            );
 
-                layout.Blocks.Add(
-                    new PrintBlock
+            layout.Blocks.Add(
+                new PrintBlock
+                {
+                    Name = "Block 5",
+                    X = 5f,
+                    Y = 62f,
+                    Width = 50f,
+                    Height = 8f,
+                    ShowBorder = false,
+                    Text = new TextElement
                     {
-                        Name = "Block 5",
-                        X = 5f,
-                        Y = 62f,
-                        Width = 50f,
-                        Height = 8f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = "Designed and Engineered in the" + "\n" + "Netherlands. Made in China",
-                            FontName = "Arial",
-                            FontSize = 8f,
-                            Bold = false,
-                            Align = "left",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
-            }
-            else
-            {
-                layout.Blocks.Add(
-                    new PrintBlock
-                    {
-                        Name = "Block 4",
-                        X = 50f,
-                        Y = 35f,
-                        Width = 50f,
-                        Height = 10f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = part0,
-                            FontName = "Arial",
-                            FontSize = 24f,
-                            Bold = true,
-                            Align = "center",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
-
-                layout.Blocks.Add(
-                    new PrintBlock
-                    {
-                        Name = "Block 4",
-                        X = 50f,
-                        Y = 40f,
-                        Width = 50f,
-                        Height = 24f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = part1 + "\n" + part2,
-                            FontName = "Arial",
-                            FontSize = 18f,
-                            Bold = true,
-                            Align = "center",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
-
-                layout.Blocks.Add(
-                    new PrintBlock
-                    {
-                        Name = "Block 5",
-                        X = 50f,
-                        Y = 57f,
-                        Width = 50f,
-                        Height = 8f,
-                        ShowBorder = false,
-                        Text = new TextElement
-                        {
-                            Content = "Made in PRC/China",
-                            FontName = "Arial",
-                            FontSize = 10f,
-                            Bold = false,
-                            Align = "center",
-                            VerticalAlign = "middle"
-                        },
-                    }
-                );
-            }
+                        Content = "Designed and Engineered in the" + "\n" + "Netherlands. Made in China",
+                        FontName = "Arial",
+                        FontSize = 8f,
+                        Bold = false,
+                        Align = "left",
+                        VerticalAlign = "middle"
+                    },
+                }
+            );
         }
 
 
@@ -1492,6 +1403,52 @@
             setBusy: v => IsPrinting = v,
             notifyStateChanged: () => InvokeAsync(StateHasChanged));
         PrintMessages = result.LogContent;
+    }
+
+    /// <summary>
+    /// 外箱产品图：从模板第一段取型号键（如 "RISE A154" → A154），
+    /// 在 wwwroot/Images/XX 下按 {键}.png/.jpg/.jpeg/.webp 查找；找不到则回退 2000.png。
+    /// </summary>
+    string ResolveXxProductImagePath(string part0, List<string> labelParts)
+    {
+        string folder = Path.Combine(Env.WebRootPath, "Images", "XX");
+        string fallback = Path.Combine(folder, "2000.png");
+
+        string? key = null;
+        if (string.Equals(part0, "RISE", StringComparison.OrdinalIgnoreCase)
+            && labelParts.Count > 1
+            && !string.IsNullOrWhiteSpace(labelParts[1]))
+        {
+            key = labelParts[1].Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(part0))
+        {
+            // "RISE A154" / "RISE 2000" → 取最后一段型号
+            var tokens = part0.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length >= 2
+                && string.Equals(tokens[0], "RISE", StringComparison.OrdinalIgnoreCase))
+                key = tokens[^1];
+            else
+                key = part0.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(key))
+            return fallback;
+
+        // 禁止命中公共图
+        if (key.Equals("logo1", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("logo2", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("Vogels", StringComparison.OrdinalIgnoreCase))
+            return fallback;
+
+        foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".webp" })
+        {
+            string candidate = Path.Combine(folder, key + ext);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return fallback;
     }
 
 }
