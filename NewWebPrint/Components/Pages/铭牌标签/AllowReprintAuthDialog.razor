@@ -1,0 +1,55 @@
+@using NewWebPrint.Utilities
+@inject SnackbarHelper SnackbarHelper
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2" Style="min-width:320px;">
+            <MudText Typo="Typo.body2" Style="opacity:0.75;">允许补打前请先验证帐号密码</MudText>
+            <MudTextField @bind-Value="Account"
+                          Label="帐号"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          AutoFocus="true"
+                          OnKeyUp="OnKeyUp"/>
+            <MudTextField @bind-Value="Password"
+                          Label="密码"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          InputType="InputType.Password"
+                          OnKeyUp="OnKeyUp"/>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">取消</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Filled" OnClick="Confirm">验证</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public MudBlazor.IMudDialogInstance? MudDialog { get; set; }
+
+    private string Account { get; set; } = "";
+    private string Password { get; set; } = "";
+
+    private void Cancel() => MudDialog?.Cancel();
+
+    private void OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            Confirm();
+    }
+
+    private void Confirm()
+    {
+        if (!BLLProductBrandPrint.VerifyAllowReprintAuth(Account, Password))
+        {
+            SnackbarHelper.Show("帐号或密码不正确", Severity.Error);
+            return;
+        }
+
+        MudDialog?.Close(DialogResult.Ok(true));
+    }
+}

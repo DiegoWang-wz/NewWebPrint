@@ -328,7 +328,8 @@
         "880160/RISE M001 VESA STRIPS CLAMPS/",
         "880533/RISE M120 DIRECT/CONTROL VESA STRIPS BL",
         "880534/RISE M089 BLACK/",
-        "880535/RISE M089 WHITE/"
+        "880535/RISE M089 WHITE/",
+        "7315400/RISE A154 HANDSET WITH LCD/"
     };
 
     List<string> LabelTemplateOptions { get; set; } = new()
@@ -340,7 +341,8 @@
         "RISE 5308/BLACK/7353080/8712285358142",
         "RISE 5300/BLACK/7353000/8712285418488",
         "RISE 2000/BLACK/7320004/8712285416842",
-        "RISE 2000/WHITE/7320005/8712285416866"
+        "RISE 2000/WHITE/7320005/8712285416866",
+        "RISE A154/BLACK/7315400/8712285422508",
     };
 
     DateTime? PrintDate { get; set; } = DateTime.Today;
@@ -1098,11 +1100,13 @@
                 else if (riseModel == "2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
                 else if (riseModel == "5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
                 else if (riseModel == "5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
+                else if (riseModel == "A154") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "A154.png");
             }
             else if (part0 == "RISE 2000") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2000.png");
             else if (part0 == "RISE 2008") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "2008.png");
             else if (part0 == "RISE 5308") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5308.jpg");
             else if (part0 == "RISE 5300") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "5300.png");
+            else if (part0 == "RISE A154") imagePath2 = Path.Combine(Env.WebRootPath, "Images/XX", "A154.png");
 
             string img2 = PrinterHelper.ImageFileToBase64(imagePath2);
             layout = new PrintLayoutModel
@@ -1227,9 +1231,9 @@
                     new PrintBlock
                     {
                         Name = "Block 8",
-                        X = 27f,
+                        X = 24f,
                         Y = 105f,
-                        Width = 46f,
+                        Width = 52f,
                         Height = 10f,
                         ShowBorder = false,
                         Text = new TextElement

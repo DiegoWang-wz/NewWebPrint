@@ -45,7 +45,7 @@ public class BLLProductBrandPrint : BLLBase
         string sql = $@"
 SELECT
     ID, Model, Maxload, IPX6, PartNo, SAPNo, ProdDate, SerialNo, RevNo,
-    Input, SerialNumber, ProductionNo, Createtime
+    Input, SerialNumber, ProductionNo, SalesOrderNo, Createtime, AllowReprint, ReprintCount
 FROM tb_ProductBrandPrint_code
 WHERE {where}
 ORDER BY ID DESC
@@ -72,13 +72,40 @@ OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
         string sql = $@"
 SELECT
     ID, Model, Maxload, IPX6, PartNo, SAPNo, ProdDate, SerialNo, RevNo,
-    Input, SerialNumber, ProductionNo, Createtime
+    Input, SerialNumber, ProductionNo, SalesOrderNo, Createtime, AllowReprint, ReprintCount
 FROM tb_ProductBrandPrint_code
 WHERE {where}
 ORDER BY ID DESC";
 
         DataSet? ds = controlCodeStorage.ExecuteSQLDatable(sql);
         return MapRows(ds);
+    }
+
+    const string AllowReprintAccount = "100208";
+    const string AllowReprintPassword = "Jc100208";
+
+    /// <summary>允许补打前的帐号密码校验。</summary>
+    public static bool VerifyAllowReprintAuth(string? account, string? password)
+    {
+        return string.Equals((account ?? "").Trim(), AllowReprintAccount, StringComparison.Ordinal)
+               && string.Equals(password ?? "", AllowReprintPassword, StringComparison.Ordinal);
+    }
+
+    /// <summary>将指定记录的 AllowReprint 置为 1。</summary>
+    public int AllowReprintByIds(IReadOnlyList<long> ids)
+    {
+        if (ids is null || ids.Count == 0)
+            return 0;
+
+        int updated = 0;
+        foreach (var chunk in ids.Distinct().Chunk(400))
+        {
+            string inList = string.Join(",", chunk);
+            string sql = $"UPDATE tb_ProductBrandPrint_code SET AllowReprint = 1 WHERE ID IN ({inList})";
+            updated += controlCodeStorage.ExecuteSQL(sql);
+        }
+
+        return updated;
     }
 
     static string BuildWhere(
@@ -148,7 +175,9 @@ ORDER BY ID DESC";
         // 完整值 / 主号前缀（11326172 可匹配 11326172-00080）/ 模糊兜底
         where.Append("SAPNo = '").Append(t).Append('\'')
             .Append(" OR SAPNo LIKE '").Append(t).Append("%'")
-            .Append(" OR SAPNo LIKE '%").Append(t).Append("%'");
+            .Append(" OR SAPNo LIKE '%").Append(t).Append("%'")
+            .Append(" OR SalesOrderNo = '").Append(t).Append('\'')
+            .Append(" OR SalesOrderNo LIKE '%").Append(t).Append("%'");
     }
 
     /// <summary>
@@ -193,7 +222,10 @@ ORDER BY ID DESC";
                 Input = ToStr(row, "Input"),
                 SerialNumber = ToStr(row, "SerialNumber"),
                 ProductionNo = ToStr(row, "ProductionNo"),
-                Createtime = ToDateTime(row, "Createtime")
+                SalesOrderNo = ToStr(row, "SalesOrderNo"),
+                Createtime = ToDateTime(row, "Createtime"),
+                AllowReprint = ToBool(row, "AllowReprint"),
+                ReprintCount = (int)ToLong(row, "ReprintCount")
             });
         }
 
@@ -214,6 +246,18 @@ ORDER BY ID DESC";
         if (!row.Table.Columns.Contains(col) || row[col] == DBNull.Value)
             return 0;
         return long.TryParse(row[col].ToString(), out var v) ? v : 0;
+    }
+
+    static bool ToBool(DataRow row, string col)
+    {
+        if (!row.Table.Columns.Contains(col) || row[col] == DBNull.Value)
+            return false;
+        var raw = row[col];
+        if (raw is bool b) return b;
+        if (raw is byte by) return by != 0;
+        if (raw is int i) return i != 0;
+        return string.Equals(raw.ToString(), "1", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(raw.ToString(), "true", StringComparison.OrdinalIgnoreCase);
     }
 
     static DateTime? ToDateTime(DataRow row, string col)

@@ -559,10 +559,11 @@ SELECT
         var (exporterText, exporterAddressText, importerText, importerAddressText) =
             GetCordAddressLines(CurrentCORDInfo.FactoryType);
 
+        string batchLotNumber = FormatBatchLotNumber(packingDate, batch);
         string qrCodeString =
-            $"{ldOrder}%{CurrentCORDInfo.LDPartNumber}%{batch}%{packingDate}%{quantity}";
+            $"{ldOrder}%{CurrentCORDInfo.LDPartNumber}%{batchLotNumber}%{packingDate}%{quantity}";
         // string qrCodeString =
-        //     $"LD Order Number: {ldOrder}{Environment.NewLine}LD Part Number: {CurrentCORDInfo.LDPartNumber}{Environment.NewLine}Batch/Lot Number: {batch}{Environment.NewLine}Packing Date: {packingDate}{Environment.NewLine}Quantity: {quantity}";
+        //     $"LD Order Number: {ldOrder}{Environment.NewLine}LD Part Number: {CurrentCORDInfo.LDPartNumber}{Environment.NewLine}Batch/Lot Number: {batchLotNumber}{Environment.NewLine}Packing Date: {packingDate}{Environment.NewLine}Quantity: {quantity}";
         var layout = new PrintLayoutModel
         {
             PrinterName = SelectedPrinter,
@@ -957,7 +958,7 @@ SELECT
                     ShowBorder = false,
                     Text = new TextElement
                     {
-                        Content = batch,
+                        Content = batchLotNumber,
                         FontName = "Arial",
                         FontSize = 8f,
                         Bold = true,
@@ -1050,6 +1051,20 @@ SELECT
             IsPrinting = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    /// <summary>
+    /// Batch/Lot Number = 打包日期(yyMMdd) + 批次号(三位前导零)，如 261022007。
+    /// </summary>
+    static string FormatBatchLotNumber(string? packingDate, string? batch)
+    {
+        string datePart = (packingDate ?? "").Trim();
+        string batchPart = (batch ?? "").Trim();
+        if (int.TryParse(batchPart, out var n))
+            batchPart = n.ToString("000");
+        else if (batchPart.Length < 3)
+            batchPart = batchPart.PadLeft(3, '0');
+        return datePart + batchPart;
     }
 
     /// <summary>

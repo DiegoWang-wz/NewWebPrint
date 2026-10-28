@@ -65,16 +65,23 @@
             </div>
             <div class="pb-cell pb-cell-actions">
                 <MudButton Variant="Variant.Filled"
+                           Color="Color.Warning"
+                           OnClick="AllowReprintAsync"
+                           Disabled="@(IsSearching || IsExporting || IsAllowingReprint)"
+                           Class="pb-filter-btn">
+                    @(IsAllowingReprint ? "处理中…" : "允许补打")
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            OnClick="SearchAsync"
-                           Disabled="@(IsSearching || IsExporting)"
+                           Disabled="@(IsSearching || IsExporting || IsAllowingReprint)"
                            Class="pb-filter-btn">
                     @(IsSearching ? "查询中…" : "查询")
                 </MudButton>
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Success"
                            OnClick="ExportExcelAsync"
-                           Disabled="@(IsSearching || IsExporting)"
+                           Disabled="@(IsSearching || IsExporting || IsAllowingReprint)"
                            StartIcon="@Icons.Material.Filled.FileDownload"
                            Class="pb-filter-btn">
                     @(IsExporting ? "导出中…" : "导出")
@@ -151,6 +158,20 @@
                     "actions actions";
             }
         }
+
+        .pb-printcode-table .mud-table-container {
+            overflow-x: auto;
+        }
+
+        .pb-printcode-table table {
+            width: max-content;
+            min-width: 100%;
+        }
+
+        .pb-printcode-table th,
+        .pb-printcode-table td {
+            white-space: nowrap;
+        }
     </style>
 
     <MudPaper Class="pa-2 tab-background" Elevation="2">
@@ -186,7 +207,8 @@
                   Height="520px"
                   Breakpoint="Breakpoint.None"
                   Loading="@IsSearching"
-                  RowsPerPage="20">
+                  RowsPerPage="20"
+                  Class="pb-printcode-table">
             <HeaderContent>
                 <MudTh Style="width:48px;">
                     <MudCheckBox T="bool"
@@ -198,15 +220,18 @@
                 </MudTh>
                 <MudTh>ID</MudTh>
                 <MudTh>生产订单</MudTh>
+                <MudTh>销售单号</MudTh>
                 <MudTh>流水</MudTh>
                 <MudTh>序列号 SerialNo</MudTh>
-                <MudTh>销售订单</MudTh>
+                <MudTh>SAPNo</MudTh>
                 <MudTh>型号</MudTh>
                 <MudTh>PartNo</MudTh>
                 <MudTh>生产日期</MudTh>
                 <MudTh>Rev</MudTh>
                 <MudTh>IPX6</MudTh>
                 <MudTh>Input</MudTh>
+                <MudTh>允许补打</MudTh>
+                <MudTh>补打次数</MudTh>
                 <MudTh>创建时间</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -218,15 +243,27 @@
                 </MudTd>
                 <MudTd DataLabel="ID">@context.ID</MudTd>
                 <MudTd DataLabel="生产订单">@context.ProductionNo</MudTd>
+                <MudTd DataLabel="销售单号">@context.SalesOrderNo</MudTd>
                 <MudTd DataLabel="流水">@context.SerialNumber</MudTd>
                 <MudTd DataLabel="SerialNo">@context.SerialNo</MudTd>
-                <MudTd DataLabel="销售订单">@context.SAPNo</MudTd>
+                <MudTd DataLabel="SAPNo">@context.SAPNo</MudTd>
                 <MudTd DataLabel="型号">@context.Model</MudTd>
                 <MudTd DataLabel="PartNo">@context.PartNo</MudTd>
                 <MudTd DataLabel="生产日期">@context.ProdDate</MudTd>
                 <MudTd DataLabel="Rev">@context.RevNo</MudTd>
                 <MudTd DataLabel="IPX6">@context.IPX6</MudTd>
                 <MudTd DataLabel="Input">@context.Input</MudTd>
+                <MudTd DataLabel="允许补打">
+                    @if (context.AllowReprint)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">可补打</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">不允许</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="补打次数">@context.ReprintCount</MudTd>
                 <MudTd DataLabel="创建时间">@(context.Createtime?.ToString("yyyy-MM-dd HH:mm:ss"))</MudTd>
             </RowTemplate>
             <NoRecordsContent>
@@ -256,6 +293,7 @@
     private bool IsSearching { get; set; }
     private bool IsExporting { get; set; }
     private bool IsSelectingAll { get; set; }
+    private bool IsAllowingReprint { get; set; }
     private int TotalCount { get; set; }
 
     private readonly Dictionary<long, ProductBrandPrintCodeRow> _selected = new();
@@ -346,6 +384,113 @@
         {
             IsSelectingAll = false;
         }
+    }
+
+    private async Task AllowReprintAsync()
+    {
+        if (IsAllowingReprint) return;
+
+        List<ProductBrandPrintCodeRow> rows;
+        bool fromSelection = _selected.Count > 0;
+        if (fromSelection)
+        {
+            rows = _selected.Values.OrderBy(x => x.ProductionNo).ThenBy(x => ParseSerialNumber(x)).ToList();
+        }
+        else
+        {
+            if (!HasFilter() || TotalCount <= 0)
+            {
+                SnackbarHelper.Show("请先查询数据，或勾选要允许补打的记录", Severity.Warning);
+                return;
+            }
+
+            rows = await Task.Run(() => _bll.QueryAll(
+                ProductionNo,
+                SerialNo,
+                SapNo,
+                Model,
+                PartNo,
+                CreateFrom,
+                CreateTo));
+        }
+
+        if (rows.Count == 0)
+        {
+            SnackbarHelper.Show("没有可允许补打的记录", Severity.Info);
+            return;
+        }
+
+        var authRef = await DialogService.ShowAsync<AllowReprintAuthDialog>(
+            "允许补打验证",
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, CloseOnEscapeKey = true });
+        var authResult = await authRef.Result;
+        if (authResult is null || authResult.Canceled)
+            return;
+
+        var summaryLines = BuildReprintSummary(rows);
+        var message =
+            (fromSelection
+                ? $"将允许勾选的 {rows.Count} 条铭牌补打：\n\n"
+                : $"未勾选，将允许当前检索到的全部 {rows.Count} 条铭牌补打：\n\n")
+            + string.Join("\n", summaryLines);
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "确认允许补打",
+            message,
+            yesText: "确定允许",
+            cancelText: "取消");
+        if (confirmed != true)
+            return;
+
+        IsAllowingReprint = true;
+        try
+        {
+            var ids = rows.Select(x => x.ID).ToList();
+            var updated = await Task.Run(() => _bll.AllowReprintByIds(ids));
+            SnackbarHelper.Show($"已允许 {updated} 条补打", Severity.Success);
+            if (_table != null)
+                await _table.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"允许补打失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsAllowingReprint = false;
+        }
+    }
+
+    static List<string> BuildReprintSummary(IReadOnlyList<ProductBrandPrintCodeRow> rows)
+    {
+        return rows
+            .GroupBy(x =>
+            {
+                if (!string.IsNullOrWhiteSpace(x.ProductionNo) && x.ProductionNo.Trim() != "0")
+                    return "工单 " + x.ProductionNo.Trim();
+                if (!string.IsNullOrWhiteSpace(x.SalesOrderNo) && x.SalesOrderNo.Trim() != "0")
+                    return "销售单 " + x.SalesOrderNo.Trim();
+                return "(无工单)";
+            })
+            .OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var nums = g.Select(ParseSerialNumber).Where(n => n.HasValue).Select(n => n!.Value).ToList();
+                if (nums.Count > 0)
+                    return $"{g.Key}：序号 {nums.Min()} 到 {nums.Max()}（{g.Count()} 条）";
+                return $"{g.Key}：{g.Count()} 条";
+            })
+            .ToList();
+    }
+
+    static int? ParseSerialNumber(ProductBrandPrintCodeRow row)
+    {
+        if (int.TryParse(row.SerialNumber, out var n))
+            return n;
+        var sn = row.SerialNo ?? "";
+        if (sn.Length >= 5 && int.TryParse(sn[^5..], out n))
+            return n;
+        return null;
     }
 
     private async Task SearchAsync()
@@ -446,8 +591,8 @@
 
             string[] headers =
             [
-                "ID", "生产订单", "流水", "序列号SerialNo", "销售订单", "型号", "PartNo",
-                "生产日期", "Rev", "IPX6", "Input", "Maxload", "创建时间"
+                "ID", "生产订单", "销售单号", "流水", "序列号SerialNo", "SAPNo", "型号", "PartNo",
+                "生产日期", "Rev", "IPX6", "Input", "Maxload", "允许补打", "补打次数", "创建时间"
             ];
             for (int c = 0; c < headers.Length; c++)
                 ws.Cell(1, c + 1).Value = headers[c];
@@ -458,17 +603,20 @@
                 int row = i + 2;
                 ws.Cell(row, 1).Value = r.ID;
                 ws.Cell(row, 2).Value = r.ProductionNo ?? "";
-                ws.Cell(row, 3).Value = r.SerialNumber ?? "";
-                ws.Cell(row, 4).Value = r.SerialNo ?? "";
-                ws.Cell(row, 5).Value = r.SAPNo ?? "";
-                ws.Cell(row, 6).Value = r.Model ?? "";
-                ws.Cell(row, 7).Value = r.PartNo ?? "";
-                ws.Cell(row, 8).Value = r.ProdDate ?? "";
-                ws.Cell(row, 9).Value = r.RevNo ?? "";
-                ws.Cell(row, 10).Value = r.IPX6 ?? "";
-                ws.Cell(row, 11).Value = r.Input ?? "";
-                ws.Cell(row, 12).Value = r.Maxload ?? "";
-                ws.Cell(row, 13).Value = r.Createtime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "";
+                ws.Cell(row, 3).Value = r.SalesOrderNo ?? "";
+                ws.Cell(row, 4).Value = r.SerialNumber ?? "";
+                ws.Cell(row, 5).Value = r.SerialNo ?? "";
+                ws.Cell(row, 6).Value = r.SAPNo ?? "";
+                ws.Cell(row, 7).Value = r.Model ?? "";
+                ws.Cell(row, 8).Value = r.PartNo ?? "";
+                ws.Cell(row, 9).Value = r.ProdDate ?? "";
+                ws.Cell(row, 10).Value = r.RevNo ?? "";
+                ws.Cell(row, 11).Value = r.IPX6 ?? "";
+                ws.Cell(row, 12).Value = r.Input ?? "";
+                ws.Cell(row, 13).Value = r.Maxload ?? "";
+                ws.Cell(row, 14).Value = r.AllowReprint ? "是" : "否";
+                ws.Cell(row, 15).Value = r.ReprintCount;
+                ws.Cell(row, 16).Value = r.Createtime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "";
             }
 
             ws.SheetView.FreezeRows(1);

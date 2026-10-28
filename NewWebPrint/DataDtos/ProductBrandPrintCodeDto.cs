@@ -17,5 +17,11 @@ public class ProductBrandPrintCodeRow
     public string? Input { get; set; }
     public string? SerialNumber { get; set; }
     public string? ProductionNo { get; set; }
+    /// <summary>销售订单号（新字段，老数据可为空）。</summary>
+    public string? SalesOrderNo { get; set; }
     public DateTime? Createtime { get; set; }
+    /// <summary>是否允许补打，默认 false。</summary>
+    public bool AllowReprint { get; set; }
+    /// <summary>已补打次数，默认 0。</summary>
+    public int ReprintCount { get; set; }
 }
