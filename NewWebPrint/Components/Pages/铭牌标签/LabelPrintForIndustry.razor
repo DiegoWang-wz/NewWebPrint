@@ -595,8 +595,23 @@
                                           Class="font-monospace"
                                           Immediate="true"
                                           Placeholder="例如 xxxxxx"/>
-                            <MudNumericField @bind-Value="PrintCount" Label="打印份数"
-                                             Margin="Margin.Dense" Variant="Variant.Outlined" Min="1" Class="mt-2"/>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="6">
+                                    <MudNumericField T="int" Value="@InternalBarcodeSeqStart"
+                                                     ValueChanged="@OnInternalBarcodeSeqStartChanged"
+                                                     Label="开始序号"
+                                                     Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                     Min="1" Max="9999" Class="mt-2"/>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudNumericField T="int" Value="@InternalBarcodeSeqEnd"
+                                                     ValueChanged="@OnInternalBarcodeSeqEndChanged"
+                                                     Label="结束序号"
+                                                     Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                     Min="1" Max="9999" Class="mt-2"/>
+                                </MudItem>
+                            </MudGrid>
+                            <MudText Typo="Typo.caption" Class="mt-1">@InternalBarcodeRollRangeDisplay</MudText>
                             <MudSelect T="string" Label="请选择打印机" Value="SelectedPrinter" ValueChanged="@OnPrinterChanged"
                                        Margin="Margin.Dense" Variant="Variant.Outlined" Class="mt-2">
                                 @foreach (var p in Printers)
@@ -681,11 +696,29 @@
         .Select((line, index) => new Fa42ScanRow(index + 1, line.InternalBarcode, line.ScannedAt))
         .ToList();
     string? InternalBarcodePrefix { get; set; }
-    /// <summary>预览：首张条码（滚码由打印引擎按 StartValue=1、PrintCount 生成）。</summary>
+    /// <summary>内部条码滚码起止（含），4 位，1～9999。</summary>
+    int InternalBarcodeSeqStart { get; set; } = 1;
+    int InternalBarcodeSeqEnd { get; set; } = 1;
+    const int InternalBarcodeSeqLimit = 9999;
+    /// <summary>预览：区间内首张条码。</summary>
     string InternalBarcodePreviewDisplay =>
-        BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix) is { } p ? $"{p}-0001" : "-";
-    string InternalBarcodeRollRangeDisplay =>
-        PrintCount < 1 ? "-" : $"0001 ~ {PrintCount:D4}";
+        BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix) is { } p &&
+        TryGetInternalBarcodeSeqRange(out var start, out _, out _)
+            ? $"{p}-{start:D4}"
+            : "-";
+    string InternalBarcodeRollRangeDisplay
+    {
+        get
+        {
+            if (!TryGetInternalBarcodeSeqRange(out var start, out var end, out var count))
+                return "开始序号需小于或等于结束序号（1～9999）";
+            var prefix = BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix);
+            string FormatSeq(int n) => prefix == null ? $"{n:D4}" : $"{prefix}-{n:D4}";
+            return count == 1
+                ? $"将打印 1 张：{FormatSeq(start)}"
+                : $"将打印 {count} 张：{FormatSeq(start)}～{FormatSeq(end)}";
+        }
+    }
     int _industryMainTab;
     /// <summary>0 通用铭牌，1 W*A-LW，2 FA42A，3 FA17，4 内部条码。</summary>
     int IndustryMainTab
@@ -860,6 +893,10 @@
                 Fa42FullBoxCount.ToString(CultureInfo.InvariantCulture));
             await LocalStorage.SetAsync(StorageKeys.IndustryFa42OuterBoxBarcode, Fa42OuterBoxBarcode ?? "");
             await LocalStorage.SetAsync(StorageKeys.IndustryInternalBarcodePrefix, InternalBarcodePrefix ?? "");
+            await LocalStorage.SetAsync(StorageKeys.IndustryInternalBarcodeSeqStart,
+                InternalBarcodeSeqStart.ToString(CultureInfo.InvariantCulture));
+            await LocalStorage.SetAsync(StorageKeys.IndustryInternalBarcodeSeqEnd,
+                InternalBarcodeSeqEnd.ToString(CultureInfo.InvariantCulture));
             await LocalStorage.SetAsync(StorageKeys.IndustrySelectedPrinter, SelectedPrinter ?? "");
         }
         catch
@@ -927,6 +964,19 @@
             InternalBarcodePrefix =
                 await LocalStorage.GetStringOrDefaultAsync(StorageKeys.IndustryInternalBarcodePrefix, "");
             await LocalStorage.RemoveAsync(StorageKeys.IndustryInternalBarcodeRollSeq);
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryInternalBarcodeSeqStart))
+            {
+                var seqStart = await LocalStorage.GetStringAsync(StorageKeys.IndustryInternalBarcodeSeqStart);
+                if (int.TryParse(seqStart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var start))
+                    InternalBarcodeSeqStart = Math.Clamp(start, 1, InternalBarcodeSeqLimit);
+            }
+
+            if (await LocalStorage.ContainsKeyAsync(StorageKeys.IndustryInternalBarcodeSeqEnd))
+            {
+                var seqEnd = await LocalStorage.GetStringAsync(StorageKeys.IndustryInternalBarcodeSeqEnd);
+                if (int.TryParse(seqEnd, NumberStyles.Integer, CultureInfo.InvariantCulture, out var end))
+                    InternalBarcodeSeqEnd = Math.Clamp(end, 1, InternalBarcodeSeqLimit);
+            }
 
             var savedPrinter = await LocalStorage.GetStringAsync(StorageKeys.IndustrySelectedPrinter);
             if (!string.IsNullOrEmpty(savedPrinter) && Printers.Contains(savedPrinter))
@@ -1024,6 +1074,25 @@
     Task OnInternalBarcodePrefixChanged(string? v) =>
         SetInternalBarcodeUiAndPersistAsync(() => InternalBarcodePrefix = v?.Trim());
 
+    Task OnInternalBarcodeSeqStartChanged(int v) =>
+        SetInternalBarcodeUiAndPersistAsync(() =>
+            InternalBarcodeSeqStart = Math.Clamp(v, 1, InternalBarcodeSeqLimit));
+
+    Task OnInternalBarcodeSeqEndChanged(int v) =>
+        SetInternalBarcodeUiAndPersistAsync(() =>
+            InternalBarcodeSeqEnd = Math.Clamp(v, 1, InternalBarcodeSeqLimit));
+
+    bool TryGetInternalBarcodeSeqRange(out int start, out int end, out int count)
+    {
+        start = InternalBarcodeSeqStart;
+        end = InternalBarcodeSeqEnd;
+        count = 0;
+        if (start < 1 || end < 1 || start > InternalBarcodeSeqLimit || end > InternalBarcodeSeqLimit || start > end)
+            return false;
+        count = end - start + 1;
+        return true;
+    }
+
     async Task SetInternalBarcodeUiAndPersistAsync(Action assign)
     {
         assign();
@@ -1037,7 +1106,7 @@
         return string.IsNullOrEmpty(p) ? null : p;
     }
 
-    /// <summary>传给 LocalAgent：前缀 + 4 位滚码占位符，序号由 StartValue～StartValue+PrintCount-1 决定。</summary>
+    /// <summary>传给 LocalAgent：前缀 + 4 位滚码占位符，序号由开始序号～结束序号决定。</summary>
     string? BuildInternalBarcodePrintPattern()
     {
         var p = BuildInternalBarcodePrefixOrNull(InternalBarcodePrefix);
@@ -2195,9 +2264,9 @@
             return;
         }
 
-        if (PrintCount < 1)
+        if (!TryGetInternalBarcodeSeqRange(out var seqStart, out var seqEnd, out var seqCount))
         {
-            SnackbarHelper.Show("打印份数无效", Severity.Error);
+            SnackbarHelper.Show("请填写有效的开始、结束序号（1～9999，且开始≤结束）", Severity.Warning);
             return;
         }
 
@@ -2215,8 +2284,8 @@
             PaperWidthMm = w,
             PaperHeightMm = h,
             Copies = 1,
-            StartValue = 1,
-            PrintCount = PrintCount,
+            StartValue = seqStart,
+            PrintCount = seqCount,
             GapMm = null,
             BorderThicknessMm = 0.4f,
             IsRotate = false,
@@ -2225,14 +2294,14 @@
         };
 
         IsPrinting = true;
-        AppendLog($"发送打印内部条码 {prefix}-[{{index:4}}] × {PrintCount} 张（序号 0001～{PrintCount:D4}）：{SelectedPrinter}");
+        AppendLog($"发送打印内部条码 {prefix}-[{{index:4}}] × {seqCount} 张（序号 {seqStart:D4}～{seqEnd:D4}）：{SelectedPrinter}");
         try
         {
             await PrinterHelper.PrintLayoutAsync(JS, layout);
             await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "LabelPrintForZY_printer");
 
-            AppendLog($"内部条码打印成功：{prefix}-0001～{prefix}-{PrintCount:D4}");
-            SnackbarHelper.Show($"打印成功：共 {PrintCount} 张（{prefix}-0001～{prefix}-{PrintCount:D4}）", Severity.Success);
+            AppendLog($"内部条码打印成功：{prefix}-{seqStart:D4}～{prefix}-{seqEnd:D4}");
+            SnackbarHelper.Show($"打印成功：共 {seqCount} 张（{prefix}-{seqStart:D4}～{prefix}-{seqEnd:D4}）", Severity.Success);
         }
         catch (Exception ex)
         {

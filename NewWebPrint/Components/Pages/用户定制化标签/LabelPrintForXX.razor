@@ -1077,7 +1077,7 @@
             if (string.IsNullOrWhiteSpace(part3))
                 part3 = "0000000000000";
 
-            var date = PrintDate ?? DateTime.Today;
+            var date = PrintDate ?? DateTime.Today; 
             int boxPcs = 1;
             if (!string.IsNullOrWhiteSpace(BoxPCS) && int.TryParse(BoxPCS.Trim(), System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out int bc) && bc > 0)
                 boxPcs = Math.Min(bc, 100);
@@ -1174,9 +1174,9 @@
                     new PrintBlock
                     {
                         Name = "quantity",
-                        X = 20f,
+                        X = 15f,
                         Y = 79f,
-                        Width = 60f,
+                        Width = 70f,
                         Height = 8f,
                         ShowBorder = false,
                         Text = new TextElement

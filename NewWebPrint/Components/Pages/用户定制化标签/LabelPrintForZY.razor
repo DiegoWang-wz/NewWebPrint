@@ -295,10 +295,13 @@
     string? DefaultPrinter { get; set; }
     string? SelectedPrinter { get; set; }
     string? ScanInput { get; set; } = string.Empty;
-    List< ScannedLine> ScannedLines { get; set; } = new();
-    List< ScanRow> ScanRows => ScannedLines
+    List<ScannedLine> ScannedLines { get; set; } = new();
+    List<ScanRow> ScanRows => ScannedLines
         .Select((line, index) => new ScanRow(index + 1, line.Code, line.ProductionTime))
         .ToList();
+    /// <summary>规范化后的条码集合，用于 O(1) 判重。</summary>
+    readonly HashSet<string> _scannedCodeKeys = new(StringComparer.OrdinalIgnoreCase);
+    bool _scanBusy;
     bool IsPrinting { get; set; }
     bool IsExporting { get; set; }
     string PrintMessages { get; set; } = string.Empty;
@@ -335,6 +338,28 @@
         InvokeAsync(StateHasChanged);
     }
 
+    static string NormalizeScanCode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+        // 扫码枪常带 \r\n / 不可见空白
+        return raw.Trim().Trim('\0', '\r', '\n', '\t');
+    }
+
+    async Task ClearScanInputAsync()
+    {
+        ScanInput = string.Empty;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await JS.InvokeVoidAsync("blazorClearScanInputs");
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
     async Task HandleScanInputKeyUp(KeyboardEventArgs e)
     {
         var isEnter = string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase)
@@ -343,68 +368,90 @@
         if (!isEnter)
             return;
 
-        var code = (ScanInput ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(code))
-        {
-            ScanInput = string.Empty;
-            await InvokeAsync(StateHasChanged);
+        // 防扫码枪连发回车导致同码录入两次
+        if (_scanBusy)
             return;
-        }
-
-        var duplicateIndex = ScannedLines.FindIndex(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
-        if (duplicateIndex >= 0)
+        _scanBusy = true;
+        try
         {
-            SnackbarHelper.Show($"条码重码：与序号 {duplicateIndex + 1} 重复", Severity.Warning);
-            AppendLog($"重码拦截：{code}，与序号 {duplicateIndex + 1} 重复。");
-            ScanInput = string.Empty;
-            await InvokeAsync(StateHasChanged);
-            await JS.InvokeVoidAsync("blazorClearScanInputs");
-            return;
-        }
+            var code = NormalizeScanCode(ScanInput);
+            // 先清空输入，避免二次 Enter 读到同一内容
+            await ClearScanInputAsync();
+            if (string.IsNullOrWhiteSpace(code))
+                return;
 
-        if (ScannedLines.Count >= 20)
-        {
-            SnackbarHelper.Show("最多支持20行条码，不能继续添加", Severity.Warning);
-            AppendLog($"超限拦截：条码 {code} 未添加，当前已达 20 行。");
-            ScanInput = string.Empty;
-            await InvokeAsync(StateHasChanged);
-            await JS.InvokeVoidAsync("blazorClearScanInputs");
-            return;
-        }
-
-        DateTime? productionTime = null;
-        if (activeIndex == 3)
-        {
-            var (ok, prodTime, err) = await TryGetHskProductionTimeAsync(code);
-            if (!ok)
+            if (_scannedCodeKeys.Contains(code))
             {
-                SnackbarHelper.Show(err ?? "查询生产日期失败", Severity.Error);
-                AppendLog($"未录入 {code}：{err}");
-                ScanInput = string.Empty;
-                await InvokeAsync(StateHasChanged);
-                await JS.InvokeVoidAsync("blazorClearScanInputs");
+                var duplicateIndex = ScannedLines.FindIndex(x =>
+                    string.Equals(NormalizeScanCode(x.Code), code, StringComparison.OrdinalIgnoreCase));
+                var seq = duplicateIndex >= 0 ? duplicateIndex + 1 : 0;
+                var tip = seq > 0
+                    ? $"条码已存在，不能重复扫码（与序号 {seq} 重复）"
+                    : "条码已存在，不能重复扫码";
+                SnackbarHelper.Show(tip, Severity.Warning);
+                AppendLog(seq > 0
+                    ? $"重码拦截：{code}，与序号 {seq} 重复。"
+                    : $"重码拦截：{code}。");
                 return;
             }
 
-            productionTime = prodTime;
-            AppendLog($"已录入：{code}，生产日期 {productionTime:yyyyMMdd}");
+            // 仅客户定制 A4 限制 20 行
+            if (activeIndex == 3 && ScannedLines.Count >= 20)
+            {
+                SnackbarHelper.Show("最多支持20行条码，不能继续添加", Severity.Warning);
+                AppendLog($"超限拦截：条码 {code} 未添加，当前已达 20 行。");
+                return;
+            }
+
+            DateTime? productionTime = null;
+            if (activeIndex == 3)
+            {
+                var (ok, prodTime, err) = await TryGetHskProductionTimeAsync(code);
+                if (!ok)
+                {
+                    SnackbarHelper.Show(err ?? "查询生产日期失败", Severity.Error);
+                    AppendLog($"未录入 {code}：{err}");
+                    return;
+                }
+
+                productionTime = prodTime;
+                AppendLog($"已录入：{code}，生产日期 {productionTime:yyyyMMdd}");
+            }
+
+            if (!_scannedCodeKeys.Add(code))
+            {
+                SnackbarHelper.Show("条码已存在，不能重复扫码", Severity.Warning);
+                AppendLog($"重码拦截：{code}。");
+                return;
+            }
+
+            ScannedLines.Add(new ScannedLine(code, productionTime));
+            if (activeIndex != 3)
+                AppendLog($"已录入：{code}");
+
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+            try
+            {
+                await JS.InvokeVoidAsync("blazorScrollScanTableToBottom");
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
-
-        ScannedLines.Add(new ScannedLine(code, productionTime));
-        if (activeIndex != 3)
-            AppendLog($"已录入：{code}");
-
-        ScanInput = string.Empty;
-        await InvokeAsync(StateHasChanged);
-        await JS.InvokeVoidAsync("blazorClearScanInputs");
-        await Task.Delay(1);
-        await JS.InvokeVoidAsync("blazorScrollScanTableToBottom");
+        finally
+        {
+            _scanBusy = false;
+        }
     }
 
     void RemoveScannedCode(int index)
     {
         if (index < 0 || index >= ScannedLines.Count) return;
+        var removed = ScannedLines[index];
         ScannedLines.RemoveAt(index);
+        _scannedCodeKeys.Remove(NormalizeScanCode(removed.Code));
         InvokeAsync(StateHasChanged);
     }
 

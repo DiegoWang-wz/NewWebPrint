@@ -29,6 +29,8 @@ public static class StorageKeys
     public const string IndustryFa42Variant = "labelIndustry.fa42Variant";
     public const string IndustryInternalBarcodePrefix = "labelIndustry.internalBarcodePrefix";
     public const string IndustryInternalBarcodeRollSeq = "labelIndustry.internalBarcodeRollSeq";
+    public const string IndustryInternalBarcodeSeqStart = "labelIndustry.internalBarcodeSeqStart";
+    public const string IndustryInternalBarcodeSeqEnd = "labelIndustry.internalBarcodeSeqEnd";
     public const string IndustryMainTab = "labelIndustry.mainTab";
 
     // W*A-LW 铭牌（40*25）。字段按型号分套持久化：labelIndustry.lwV0.*（W1A）、lwV1.*（W8A）。
