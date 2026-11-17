@@ -1,0 +1,72 @@
+{
+  "PrinterName": "TSC TTP-244 Pro",
+  "PaperWidthMm": 100,
+  "PaperHeightMm": 80,
+  "Copies": 1,
+  "StartValue": 1,
+  "PrintCount": 1,
+  "BorderThicknessMm": 0.2,
+  "Blocks": [
+    {
+      "Name": "title",
+      "X": 7,
+      "Y": 10,
+      "Width": 90,
+      "Height": 15,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "TYPE:RIGHT BODY",
+        "FontName": "Arial",
+        "FontSize": 25,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "material_des",
+      "X": 7,
+      "Y": 27,
+      "Width": 90,
+      "Height": 23,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "",
+        "FontName": "Arial",
+        "FontSize": 22,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "serialnum",
+      "X": 7,
+      "Y": 53,
+      "Width": 90,
+      "Height": 9,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "",
+        "FontName": "Arial",
+        "FontSize": 20,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "矩形1",
+      "X": 3,
+      "Y": 3,
+      "Width": 95,
+      "Height": 75,
+      "ShowBorder": true,
+      "BorderStyle": "Solid"
+    }
+  ],
+  "IsRotate": false
+}

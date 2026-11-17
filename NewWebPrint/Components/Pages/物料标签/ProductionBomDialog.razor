@@ -1,0 +1,232 @@
+@using System.Globalization
+@using NewWebPrint.Models.Api
+@using NewWebPrint.Services.SapEwm
+@using Newtonsoft.Json.Linq
+@inject ISapEwmService SapEwmService
+@inject SnackbarHelper SnackbarHelper
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">生产订单 BOM — @ProductionOrderNo</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2"/>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-2">父项</MudText>
+            <MudSimpleTable Dense="true" Hover="true" Class="mb-4" Style="overflow-x:auto;">
+                <thead>
+                <tr>
+                    <th>销售订单</th>
+                    <th>生产订单</th>
+                    <th>车间</th>
+                    <th>计划数量</th>
+                    <th>物料代码</th>
+                    <th>物料名称</th>
+                    <th>规格型号</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>@_father.SalesOrderNo</td>
+                    <td>@_father.OrderNo</td>
+                    <td>@_father.Supplier</td>
+                    <td>@_father.OrderQuantity</td>
+                    <td>@_father.MaterialCode</td>
+                    <td>@_father.MaterialName</td>
+                    <td>@_father.MaterialModel</td>
+                </tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-2">子项用料</MudText>
+            <MudTable Items="@_children" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm"
+                      Style="max-height:420px; overflow:auto;">
+                <HeaderContent>
+                    <MudTh>物料代码</MudTh>
+                    <MudTh>物料名称</MudTh>
+                    <MudTh>规格型号</MudTh>
+                    <MudTh>单位数量</MudTh>
+                    <MudTh>需求数量</MudTh>
+                    <MudTh>线边仓库存</MudTh>
+                    <MudTh>单位1</MudTh>
+                    <MudTh>单位2</MudTh>
+                    <MudTh>线边仓</MudTh>
+                    <MudTh>缺料</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.MaterialCode</MudTd>
+                    <MudTd>@context.MaterialName</MudTd>
+                    <MudTd>@context.MaterialModel</MudTd>
+                    <MudTd>@context.UnitQty</MudTd>
+                    <MudTd>@context.ReqQty</MudTd>
+                    <MudTd>@context.StockQty</MudTd>
+                    <MudTd>@context.Unit1</MudTd>
+                    <MudTd>@context.Unit2</MudTd>
+                    <MudTd>@context.StorageLoc</MudTd>
+                    <MudTd>@context.Shortage</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Align="Align.Center" Color="Color.Secondary">无子项数据</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">关闭</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string ProductionOrderNo { get; set; } = string.Empty;
+
+    bool _loading = true;
+    string? _error;
+    FatherRow _father = new();
+    List<ChildRow> _children = new();
+
+    sealed class FatherRow
+    {
+        public string SalesOrderNo { get; set; } = "";
+        public string OrderNo { get; set; } = "";
+        public string Supplier { get; set; } = "";
+        public string OrderQuantity { get; set; } = "";
+        public string MaterialCode { get; set; } = "";
+        public string MaterialName { get; set; } = "";
+        public string MaterialModel { get; set; } = "";
+    }
+
+    sealed class ChildRow
+    {
+        public string MaterialCode { get; set; } = "";
+        public string MaterialName { get; set; } = "";
+        public string MaterialModel { get; set; } = "";
+        public string UnitQty { get; set; } = "";
+        public string ReqQty { get; set; } = "";
+        public string StockQty { get; set; } = "";
+        public string Unit1 { get; set; } = "";
+        public string Unit2 { get; set; } = "";
+        public string StorageLoc { get; set; } = "";
+        public string Shortage { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var productResp = await SapEwmService.InvokeAsync(
+                "GetProductInfo",
+                new Dictionary<string, string?> { ["po"] = ProductionOrderNo, ["lang"] = "1" });
+
+            if (productResp.Code != ApiResultCode.Success || productResp.Data is null)
+            {
+                _error = productResp.Message ?? "未找到该生产订单的用料信息";
+                return;
+            }
+
+            var raw = productResp.Data.ResultText ?? productResp.Data.JsonResult ?? "";
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                _error = "未找到该生产订单的用料信息";
+                return;
+            }
+
+            var obj = JToken.Parse(raw) as JObject;
+            if (obj is null)
+            {
+                _error = "生产订单数据解析失败";
+                return;
+            }
+
+            var orderNo = ClearFrontZero(obj.Value<string>("orderNo"));
+            var orderQty = obj.Value<string>("orderQuantity") ?? "0";
+            _father = new FatherRow
+            {
+                Supplier = obj.Value<string>("supplier") ?? "",
+                OrderNo = orderNo,
+                SalesOrderNo = ClearFrontZero(obj.Value<string>("SalesOrderNo")),
+                MaterialCode = ClearFrontZero(obj.Value<string>("materialCode")),
+                MaterialName = obj.Value<string>("materialName") ?? "",
+                MaterialModel = obj.Value<string>("materialModel_zh") ?? "",
+                OrderQuantity = FormatDouble(orderQty)
+            };
+
+            var bomResp = await SapEwmService.InvokeAsync(
+                "GetLDBChildBom_psa",
+                new Dictionary<string, string?> { ["no"] = orderNo });
+
+            if (bomResp.Code != ApiResultCode.Success || bomResp.Data is null)
+            {
+                _error = bomResp.Message ?? "BOM 查询失败";
+                return;
+            }
+
+            var bomRaw = bomResp.Data.ResultText ?? bomResp.Data.JsonResult ?? "";
+            if (string.IsNullOrWhiteSpace(bomRaw))
+                return;
+
+            var token = JToken.Parse(bomRaw);
+            var arr = token as JArray ?? (token["data"] as JArray) ?? new JArray();
+            var fatherNum = ParseDouble(orderQty);
+            foreach (var item in arr.OfType<JObject>())
+            {
+                var mqty = ClearFrontZero(item.Value<string>("Mquantity") ?? item.Value<string>("mquantity"));
+                var req = ParseDouble(mqty);
+                var unitNum = fatherNum != 0 ? req / fatherNum : 0;
+                var stockRaw = item.Value<string>("BDMNG_PSA") ?? item.Value<string>("bdmng_psa") ?? "";
+                var stock = string.IsNullOrWhiteSpace(stockRaw) ? 0 : ParseDouble(stockRaw);
+                _children.Add(new ChildRow
+                {
+                    MaterialCode = ClearFrontZero(item.Value<string>("Mcode") ?? item.Value<string>("mcode")),
+                    MaterialName = item.Value<string>("Mname") ?? item.Value<string>("mname") ?? "",
+                    MaterialModel = item.Value<string>("Mmodel") ?? item.Value<string>("mmodel") ?? "",
+                    UnitQty = unitNum.ToString("0.000", CultureInfo.InvariantCulture),
+                    ReqQty = FormatDouble(mqty),
+                    StockQty = string.IsNullOrWhiteSpace(stockRaw) ? "" : FormatDouble(stockRaw),
+                    Unit1 = item.Value<string>("Mquantity_units") ?? item.Value<string>("mquantity_units") ?? "",
+                    Unit2 = item.Value<string>("BDMNG_PSA_units") ?? item.Value<string>("bdmng_psa_units") ?? "",
+                    StorageLoc = item.Value<string>("LGORT") ?? item.Value<string>("lgort") ?? "",
+                    Shortage = stock - req < 0 ? "X" : ""
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "BOM FORM 读取错误 " + ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    static string ClearFrontZero(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        var trimmed = value.TrimStart('0');
+        return string.IsNullOrEmpty(trimmed) ? "0" : trimmed;
+    }
+
+    static double ParseDouble(string? value) =>
+        double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0;
+
+    static string FormatDouble(string? value)
+    {
+        if (!double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            && !double.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out d))
+            return value ?? "";
+        return d.ToString(CultureInfo.InvariantCulture);
+    }
+
+    void Close() => MudDialog.Close();
+}

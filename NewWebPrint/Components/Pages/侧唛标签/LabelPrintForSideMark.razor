@@ -12,20 +12,28 @@
 
 @rendermode InteractiveServer
 
-<MudGrid Class="pa-4 py-3 side-mark-page"
-         GutterSize="2"
-         Justify="Justify.Center"
-         AlignItems="AlignItems.Start">
-    <MudItem xs="12" xl="12">
-        <MudPaper Outlined="true" Class="pa-3 mb-3 section-box">
-            <MudGrid Spacing="2" AlignItems="AlignItems.Stretch">
+<div class="side-mark-shell">
+<MudTabs ActivePanelIndex="_sideMarkTabIndex"
+         ActivePanelIndexChanged="OnSideMarkTabChanged"
+         Elevation="2"
+         Rounded="true"
+         ApplyEffectsToContainer="true"
+         PanelClass="pa-0"
+         Class="side-mark-mode-tabs mx-4 mt-1 mb-1 flex-shrink-0">
+    <MudTabPanel Text="通用侧唛"></MudTabPanel>
+    <MudTabPanel Text="智能家居"></MudTabPanel>
+</MudTabs>
+
+<div class="side-mark-page px-4 pb-2">
+        <MudPaper Outlined="true" Class="pa-2 section-box side-mark-top">
+            <MudGrid Spacing="1" AlignItems="AlignItems.Stretch" Class="mb-2 flex-shrink-0">
                 <MudItem xs="12" md="9">
                     <MudGrid Spacing="2">
-                        <MudItem xs="12">
+                        <MudItem xs="12" sm="6">
                             <MudTextField T="string" Label="请输入生产订单号" @bind-Value="ProductionOrder"
                                           Margin="Margin.Dense" Variant="Variant.Outlined"/>
                         </MudItem>
-                        <MudItem xs="12">
+                        <MudItem xs="12" sm="6">
                             <MudTextField T="string" Label="请输入销售/发货订单号" @bind-Value="DeliveryOrSalesOrderNo"
                                           Margin="Margin.Dense" Variant="Variant.Outlined"/>
                         </MudItem>
@@ -38,20 +46,20 @@
                     </MudButton>
                 </MudItem>
             </MudGrid>
-        </MudPaper>
-
-        <div class="mb-3">
             @if (IsSearching)
             {
-                <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2"/>
+                <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-1 flex-shrink-0"/>
             }
             <div class="table-wrap">
                 <MudTable Items="@_tableRows"
                           T="SapEwmDynamicPayload"
                           Dense="true"
                           Hover="true"
-                          Breakpoint="Breakpoint.Sm"
+                          Breakpoint="Breakpoint.None"
+                          FixedHeader="true"
+                          Height="100%"
                           OnRowClick="OnTableRowClick"
+                          RowClassFunc="GetSideMarkTableRowClass"
                           Class="order-detail-table">
                     <HeaderContent>
                         <MudTh>车间</MudTh>
@@ -63,38 +71,41 @@
                         <MudTh>物料名称</MudTh>
                         <MudTh>规格型号</MudTh>
                         <MudTh>订单数量</MudTh>
-                            <MudTh>侧唛是否带JCLOGO</MudTh>
+                        <MudTh>侧唛是否带JCLOGO</MudTh>
                         <MudTh>客户物料标识</MudTh>
-                            <MudTh>客户物料名称</MudTh>
-                            <MudTh>客户PO</MudTh>
-                            <MudTh>中文标识</MudTh>
-                            <MudTh>VBBP-ZI10</MudTh>
+                        <MudTh>客户物料名称</MudTh>
+                        <MudTh>客户PO</MudTh>
+                        <MudTh>中文标识</MudTh>
+                        <MudTh>VBBP-ZI10</MudTh>
+                        <MudTh>生产要求备注</MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd>@context.GetString("plant")</MudTd>
-                        <MudTd>@context.GetString("customerName")</MudTd>
-                        <MudTd>@context.GetString("customerCode")</MudTd>
-                        <MudTd>@context.GetString("orderNo")</MudTd>
-                        <MudTd>@context.GetString("SalesOrderNo")</MudTd>
-                        <MudTd>@context.GetString("materialCode")</MudTd>
-                        <MudTd>@context.GetString("materialName")</MudTd>
-                        <MudTd>@context.GetString("materialModel_zh")</MudTd>
-                        <MudTd>@context.GetString("orderQuantity")</MudTd>
-                            <MudTd>@context.GetString("jclogoText", "HaveJiecangLOGO")</MudTd>
-                        <MudTd>@context.GetString("materialCodebyClient")</MudTd>
-                            <MudTd>@context.GetString("materialNamebyClient")</MudTd>
-                            <MudTd>@context.GetString("ZOGEN", "ZCPON")</MudTd>
-                            <MudTd>@context.GetString("ZMTYPE", "中文标识")</MudTd>
-                            <MudTd>@context.GetString("ZI10", "STTXT")</MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("plant")">@context.GetString("plant")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("customerName")">@context.GetString("customerName")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("customerCode")">@context.GetString("customerCode")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("orderNo")">@context.GetString("orderNo")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("SalesOrderNo")">@context.GetString("SalesOrderNo")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("materialCode")">@context.GetString("materialCode")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("materialName")">@context.GetString("materialName")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("materialModel_zh")">@context.GetString("materialModel_zh")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("orderQuantity")">@context.GetString("orderQuantity")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("jclogoText", "HaveJiecangLOGO")">@context.GetString("jclogoText", "HaveJiecangLOGO")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("materialCodebyClient")">@context.GetString("materialCodebyClient")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("materialNamebyClient")">@context.GetString("materialNamebyClient")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("ZOGEN", "ZCPON")">@context.GetString("ZOGEN", "ZCPON")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("ZMTYPE", "中文标识")">@context.GetString("ZMTYPE", "中文标识")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("ZI10", "STTXT")">@context.GetString("ZI10", "STTXT")</span></MudTd>
+                        <MudTd><span class="cell-clamp" title="@context.GetString("ZI01")">@context.GetString("ZI01")</span></MudTd>
                     </RowTemplate>
                     <NoRecordsContent>
                         <MudText Align="Align.Center" Typo="Typo.body2">暂无数据</MudText>
                     </NoRecordsContent>
                 </MudTable>
             </div>
-        </div>
+        </MudPaper>
 
-        <MudGrid Spacing="2" Class="mb-3" AlignItems="AlignItems.Stretch">
+        <div class="side-mark-bottom">
+        <MudGrid Spacing="2" AlignItems="AlignItems.Stretch">
             <MudItem xs="12" md="6" Class="d-flex">
                 <MudPaper Outlined="true" Class="pa-3 result-panel equal-height-panel">
                     <MudGrid Spacing="1">
@@ -153,75 +164,84 @@
                                 </div>
                             </div>
                         </MudItem>
-                        <MudItem xs="12">
-                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-1 row-strong">
-                                <MudCheckBox T="bool" @bind-Value="IsInventoryOrder" Label="备库订单"
-                                             Class="row-strong"/>
-                                <MudCheckBox T="bool" @bind-Value="Rotate90" Label="旋转90°" Class="row-strong"/>
-                                <MudSpacer/>
-                                <div class="reprint-range">
-                                    <MudText Typo="Typo.body2">补打序列号:</MudText>
-                                    <MudTextField T="string"
-                                                  @bind-Value="ReprintSerialStart"
-                                                  Class="reprint-input"
-                                                  Margin="Margin.Dense"
-                                                  Variant="Variant.Outlined"/>
-                                    <MudText Typo="Typo.body2" Class="mx-1">-</MudText>
-                                    <MudTextField T="string"
-                                                  @bind-Value="ReprintSerialEnd"
-                                                  Class="reprint-input"
-                                                  Margin="Margin.Dense"
-                                                  Variant="Variant.Outlined"/>
-                                </div>
-                            </MudStack>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudGrid Spacing="1" AlignItems="AlignItems.End" Class="mt-1">
-                                <MudItem xs="12" md="4">
-                                    <MudGrid Spacing="1" AlignItems="AlignItems.End">
-                                        <MudItem xs="12" sm="5" Class="weight-btn-cell">
-                                            <MudButton Variant="Variant.Filled"
-                                                       Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
-                                                       OnClick="@EnableWeight"
-                                                       FullWidth="true"
-                                                       Class="weight-btn mt-2">
-                                                @(_isSerialOpen ? "断开称重器" : "开启称重")
-                                            </MudButton>
-                                        </MudItem>
-                                        <MudItem xs="12" sm="7">
-                                            <MudTextField T="string" Label="工号" @bind-Value="UserId"
-                                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
-                                        </MudItem>
-                                    </MudGrid>
-                                </MudItem>
-                                <MudSpacer/>
-                                <MudItem xs="12" md="6">
-                                    <MudGrid Spacing="1" AlignItems="AlignItems.End" Justify="Justify.FlexEnd">
-                                        <MudItem xs="4" sm="4">
-                                            <MudTextField T="string" Label="称重"
-                                                          @bind-Value="WeightActual"
-                                                          Margin="Margin.Dense"
-                                                          Variant="Variant.Outlined"
-                                                          ReadOnly="true"/>
-                                        </MudItem>
-                                        <MudItem xs="4" sm="4">
-                                            <MudTextField T="string" Label="标重"
-                                                          @bind-Value="WeightStandard"
-                                                          Margin="Margin.Dense"
-                                                          Variant="Variant.Outlined"
-                                                          Disabled="@(!_isSerialOpen)"/>
-                                        </MudItem>
-                                        <MudItem xs="4" sm="4">
-                                            <MudTextField T="string" Label="公差"
-                                                          @bind-Value="WeightTolerance"
-                                                          Margin="Margin.Dense"
-                                                          Variant="Variant.Outlined"
-                                                          ReadOnly="true"/>
-                                        </MudItem>
-                                    </MudGrid>
-                                </MudItem>
-                            </MudGrid>
-                        </MudItem>
+                        @if (IsSmartHomeTab)
+                        {
+                            <MudItem xs="12" Class="mt-2 flex-grow-1">
+                                <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="140" Class="w-100"/>
+                            </MudItem>
+                        }
+                        @if (!IsSmartHomeTab)
+                        {
+                            <MudItem xs="12">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-1 row-strong">
+                                    <MudCheckBox T="bool" @bind-Value="IsInventoryOrder" Label="备库订单"
+                                                 Class="row-strong"/>
+                                    <MudCheckBox T="bool" @bind-Value="Rotate90" Label="旋转90°" Class="row-strong"/>
+                                    <MudSpacer/>
+                                    <div class="reprint-range">
+                                        <MudText Typo="Typo.body2">补打序列号:</MudText>
+                                        <MudTextField T="string"
+                                                      @bind-Value="ReprintSerialStart"
+                                                      Class="reprint-input"
+                                                      Margin="Margin.Dense"
+                                                      Variant="Variant.Outlined"/>
+                                        <MudText Typo="Typo.body2" Class="mx-1">-</MudText>
+                                        <MudTextField T="string"
+                                                      @bind-Value="ReprintSerialEnd"
+                                                      Class="reprint-input"
+                                                      Margin="Margin.Dense"
+                                                      Variant="Variant.Outlined"/>
+                                    </div>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudGrid Spacing="1" AlignItems="AlignItems.End" Class="mt-1">
+                                    <MudItem xs="12" md="4">
+                                        <MudGrid Spacing="1" AlignItems="AlignItems.End">
+                                            <MudItem xs="12" sm="5" Class="weight-btn-cell">
+                                                <MudButton Variant="Variant.Filled"
+                                                           Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                                           OnClick="@EnableWeight"
+                                                           FullWidth="true"
+                                                           Class="weight-btn mt-2">
+                                                    @(_isSerialOpen ? "断开称重器" : "开启称重")
+                                                </MudButton>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="7">
+                                                <MudTextField T="string" Label="工号" @bind-Value="UserId"
+                                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudItem>
+                                    <MudSpacer/>
+                                    <MudItem xs="12" md="6">
+                                        <MudGrid Spacing="1" AlignItems="AlignItems.End" Justify="Justify.FlexEnd">
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="称重"
+                                                              @bind-Value="WeightActual"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              ReadOnly="true"/>
+                                            </MudItem>
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="标重"
+                                                              @bind-Value="WeightStandard"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              Disabled="@(!_isSerialOpen)"/>
+                                            </MudItem>
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="公差"
+                                                              @bind-Value="WeightTolerance"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              ReadOnly="true"/>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudItem>
+                        }
                     </MudGrid>
                 </MudPaper>
             </MudItem>
@@ -245,34 +265,123 @@
                             <MudTextField T="string" Label="此箱数量" @bind-Value="BoxPCS" Margin="Margin.Dense"
                                           Variant="Variant.Outlined"/>
                         </MudItem>
-                        <MudItem xs="12" sm="2">
-                            <MudTextField T="string" Label="打印份数" @bind-Value="StablePrintCount"
-                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
-                        </MudItem>
-                        <MudItem xs="12" sm="4">
-                            <MudDatePicker Label="交货日期" @bind-Date="PrintDate" Margin="Margin.Dense"
-                                           Variant="Variant.Outlined"/>
-                        </MudItem>
-                        <MudItem xs="12" sm="4">
-                            <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
-                                           Variant="Variant.Outlined"/>
-                        </MudItem>
-                        <MudItem xs="12" sm="6">
-                            <MudTextField T="string" Label="顾家送货单号" @bind-Value="GujiaFireWorkOrderNo"
-                                          Margin="Margin.Dense" Variant="Variant.Outlined"/>
-                        </MudItem>
-                        <MudItem xs="12" sm="6">
-                            <MudTextField T="string" Label="序号抬头" @bind-Value="SerialPrefix" Margin="Margin.Dense"
-                                          Variant="Variant.Outlined"/>
-                        </MudItem>
+                        @if (IsSmartHomeTab)
+                        {
+                            <MudItem xs="12" sm="2">
+                                <MudTextField T="string" Label="起始序号" @bind-Value="CustomSerialStart"
+                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="2">
+                                <MudTextField T="string" Label="打印数量" @bind-Value="StablePrintCount"
+                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="3">
+                                <MudDatePicker Label="交货日期" @bind-Date="PrintDate" Margin="Margin.Dense"
+                                               Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="3">
+                                <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                               Variant="Variant.Outlined"/>
+                            </MudItem>
+                        }
+                        else
+                        {
+                            <MudItem xs="12" sm="2">
+                                <MudTextField T="string" Label="打印份数" @bind-Value="StablePrintCount"
+                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudDatePicker Label="交货日期" @bind-Date="PrintDate" Margin="Margin.Dense"
+                                               Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudDatePicker Label="生产日期" @bind-Date="ProductionDate" Margin="Margin.Dense"
+                                               Variant="Variant.Outlined"/>
+                            </MudItem>
+                        }
+                        @if (!IsSmartHomeTab)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudTextField T="string" Label="顾家送货单号" @bind-Value="GujiaFireWorkOrderNo"
+                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField T="string" Label="序号抬头" @bind-Value="SerialPrefix" Margin="Margin.Dense"
+                                              Variant="Variant.Outlined"/>
+                            </MudItem>
+                        }
                         <MudItem xs="12">
-                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="checkbox-row">
-                                <MudCheckBox T="bool" @bind-Value="IsGujiaSideMarkPrint" Label="顾家侧唛打印"/>
-                                <MudCheckBox T="bool" @bind-Value="IsAddProductionSerialPrint"
-                                             Label="增加生产序号打印"/>
-                                <MudCheckBox T="bool" @bind-Value="IsYinaSideMarkPrint" Label="伊那侧唛打印"/>
-                            </MudStack>
+                            <div class="prod-req-remark">生产要求备注：@(_data?.GetString("ZI01") ?? string.Empty)</div>
                         </MudItem>
+                        @if (!IsSmartHomeTab)
+                        {
+                            <MudItem xs="12">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="checkbox-row">
+                                    <MudCheckBox T="bool" @bind-Value="IsGujiaSideMarkPrint" Label="顾家侧唛打印"/>
+                                    <MudCheckBox T="bool" @bind-Value="IsAddProductionSerialPrint" Label="增加生产序号打印"/>
+                                    <MudCheckBox T="bool" @bind-Value="IsYinaSideMarkPrint" Label="伊那侧唛打印"/>
+                                </MudStack>
+                            </MudItem>
+                        }
+                        @if (IsSmartHomeTab)
+                        {
+                            <MudItem xs="12">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-1 row-strong">
+                                    <MudRadioGroup T="string" @bind-Value="SmartHomeSideMarkType" Class="d-flex flex-row flex-wrap gap-2">
+                                        <MudRadio Value="@("宜家侧唛")" Color="Color.Primary" Class="row-strong">宜家侧唛</MudRadio>
+                                        <MudRadio Value="@("罗马尼亚侧唛")" Color="Color.Primary" Class="row-strong">罗马尼亚侧唛</MudRadio>
+                                        <MudRadio Value="@("挂衣杆侧唛")" Color="Color.Primary" Class="row-strong">挂衣杆侧唛</MudRadio>
+                                    </MudRadioGroup>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudGrid Spacing="1" AlignItems="AlignItems.End" Class="mt-1">
+                                    <MudItem xs="12" md="4">
+                                        <MudGrid Spacing="1" AlignItems="AlignItems.End">
+                                            <MudItem xs="12" sm="5" Class="weight-btn-cell">
+                                                <MudButton Variant="Variant.Filled"
+                                                           Color="@(_isSerialOpen ? Color.Warning : Color.Primary)"
+                                                           OnClick="@EnableWeight"
+                                                           FullWidth="true"
+                                                           Class="weight-btn mt-2">
+                                                    @(_isSerialOpen ? "断开称重器" : "开启称重")
+                                                </MudButton>
+                                            </MudItem>
+                                            <MudItem xs="12" sm="7">
+                                                <MudTextField T="string" Label="工号" @bind-Value="UserId"
+                                                              Margin="Margin.Dense" Variant="Variant.Outlined"/>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudItem>
+                                    <MudSpacer/>
+                                    <MudItem xs="12" md="6">
+                                        <MudGrid Spacing="1" AlignItems="AlignItems.End" Justify="Justify.FlexEnd">
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="称重"
+                                                              @bind-Value="WeightActual"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              ReadOnly="true"/>
+                                            </MudItem>
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="标重"
+                                                              @bind-Value="WeightStandard"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              Disabled="@(!_isSerialOpen)"/>
+                                            </MudItem>
+                                            <MudItem xs="4" sm="4">
+                                                <MudTextField T="string" Label="公差"
+                                                              @bind-Value="WeightTolerance"
+                                                              Margin="Margin.Dense"
+                                                              Variant="Variant.Outlined"
+                                                              ReadOnly="true"/>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudItem>
+                        }
                         <MudItem xs="12">
                             <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="PrintSubmit"
                                        Disabled="@IsPrinting" FullWidth="true" Class="action-btn">
@@ -284,19 +393,48 @@
             </MudItem>
         </MudGrid>
 
-        <MudGrid Spacing="2">
-            <MudItem xs="12">
-                <div>
-                    <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="200"/>
-                </div>
-            </MudItem>
-        </MudGrid>
-    </MudItem>
-</MudGrid>
+        @if (!IsSmartHomeTab)
+        {
+            <MudGrid Spacing="2" Class="mt-2">
+                <MudItem xs="12">
+                    <div>
+                        <OperationLog Content="@PrintMessages" Title="消息输出" HeightPx="160"/>
+                    </div>
+                </MudItem>
+            </MudGrid>
+        }
+        </div>
+</div>
+</div>
 
 <style>
+    .side-mark-shell {
+        display: flex;
+        flex-direction: column;
+        height: calc(100dvh - 64px);
+        min-height: 0;
+        overflow: hidden;
+    }
+
     .side-mark-page {
-        min-height: 88vh;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: auto;
+    }
+
+    .side-mark-top {
+        flex: 1 1 auto;
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .side-mark-bottom {
+        flex: 0 0 auto;
     }
 
     .section-box {
@@ -335,33 +473,69 @@
     }
 
     .table-wrap {
-        overflow-x: hidden;
-        overflow-y: auto;
+        flex: 1 1 auto;
+        min-height: 160px;
+        height: 0;
+        overflow: auto;
         border: 1px solid #e0e0e0;
         border-radius: 4px;
-        max-height: 146px;
+    }
+
+    .table-wrap .mud-table-container {
+        height: 100%;
     }
 
     .order-detail-table {
-        table-layout: fixed;
-        width: 100%;
+        table-layout: auto;
+        width: max-content;
+        min-width: 100%;
+        height: 100%;
     }
 
     .order-detail-table th {
-        white-space: nowrap;
+        white-space: nowrap !important;
         line-height: 1.2;
+        vertical-align: middle;
     }
 
     .order-detail-table td {
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
         vertical-align: middle;
         line-height: 1.25;
+        max-width: 160px;
+        min-width: 72px;
+    }
+
+    .order-detail-table .cell-clamp {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        line-height: 1.25;
+        max-height: 2.5em;
+        white-space: normal;
+    }
+
+    .order-detail-table tbody tr {
+        cursor: pointer;
+    }
+
+    .order-detail-table tbody tr.side-mark-selected-row {
+        background-color: #bbdefb !important;
+    }
+
+    .order-detail-table tbody tr.side-mark-selected-row:hover {
+        background-color: #90caf9 !important;
+    }
+
+    .order-detail-table tbody tr.side-mark-selected-row td {
+        color: rgba(0, 0, 0, 0.87);
     }
 
     .result-panel {
-        min-height: 280px;
+        min-height: 0;
     }
 
     .equal-height-panel {
@@ -370,7 +544,22 @@
     }
 
     .keypad-box {
-        min-height: 280px;
+        min-height: 0;
+    }
+
+    @@media (max-height: 780px) {
+        .side-mark-top {
+            min-height: 160px;
+        }
+
+        .table-wrap {
+            min-height: 120px;
+        }
+
+        .result-list-label,
+        .result-list-value {
+            font-size: 0.82rem;
+        }
     }
 
     .bi10-input {
@@ -445,9 +634,33 @@
     .checkbox-row {
         flex-wrap: wrap;
     }
+
+    .prod-req-remark {
+        color: #c62828;
+        font-weight: 700;
+        text-align: left;
+        line-height: 1.4;
+        word-break: break-word;
+    }
+
+    /* 两个 Tab 功能暂共用同一套页面，隐藏空面板占位 */
+    .side-mark-mode-tabs .mud-tabs-panels {
+        display: none;
+    }
 </style>
 
 @code {
+    /// <summary>0=通用侧唛，1=智能家居（功能暂相同，后续再分支）。</summary>
+    int _sideMarkTabIndex;
+    bool IsSmartHomeTab => _sideMarkTabIndex == 1;
+
+    void OnSideMarkTabChanged(int index)
+    {
+        _sideMarkTabIndex = index;
+        if (IsSmartHomeTab)
+            SmartHomeSideMarkType = "宜家侧唛";
+    }
+
     List<string> Printers { get; set; } = new();
     string? DefaultPrinter { get; set; }
     string? SelectedPrinter { get; set; }
@@ -462,6 +675,8 @@
     string Bi10Value { get; set; } = "";
     string ReprintSerialStart { get; set; } = "0";
     string ReprintSerialEnd { get; set; } = "0";
+    /// <summary>智能家居自定义起始序号（挂衣杆流水号从此开始）。</summary>
+    string CustomSerialStart { get; set; } = "1";
     string UserId { get; set; } = "";
     private string _weightActual = string.Empty;
 
@@ -496,10 +711,13 @@
     bool IsAddProductionSerialPrint { get; set; }
     bool IsYinaSideMarkPrint { get; set; }
 
+    /// <summary>智能家居侧唛类型：宜家侧唛 / 罗马尼亚侧唛 / 挂衣杆侧唛。</summary>
+    string SmartHomeSideMarkType { get; set; } = "宜家侧唛";
+
     private SapEwmDynamicPayload? _data;
     private List<SapEwmDynamicPayload> _tableRows = new();
     string ProductionOrder { get; set; } = "";
-    string DeliveryOrSalesOrderNo { get; set; } = "11292604";
+    string DeliveryOrSalesOrderNo { get; set; } = "";
     bool IsSearching { get; set; }
     private bool _isSerialOpen;
     private DotNetObjectReference<LabelPrintForSideMark>? _objRef;
@@ -719,6 +937,9 @@
         Bi10Value = _data.GetString("ZI10", "STTXT") ?? string.Empty;
     }
 
+    string GetSideMarkTableRowClass(SapEwmDynamicPayload row, int _) =>
+        _data is not null && ReferenceEquals(row, _data) ? "side-mark-selected-row" : string.Empty;
+
     SapEwmDynamicPayload NormalizeSapPayload(SapEwmDynamicPayload payload)
     {
         var map = new Dictionary<string, JsonElement>(payload.Fields, StringComparer.OrdinalIgnoreCase);
@@ -862,11 +1083,47 @@
 
         if (!int.TryParse(StablePrintCount?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var copies) || copies <= 0)
         {
-            SnackbarHelper.Show("打印份数必须为正整数", Severity.Warning);
+            SnackbarHelper.Show(IsSmartHomeTab ? "打印数量必须为正整数" : "打印份数必须为正整数", Severity.Warning);
             return;
         }
 
         copies = Math.Min(copies, 100);
+
+        if (IsSmartHomeTab)
+        {
+            if (!int.TryParse(CustomSerialStart?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var customStart) ||
+                customStart < 0)
+            {
+                SnackbarHelper.Show("请填写有效的起始序号（≥0 的整数）", Severity.Warning);
+                return;
+            }
+
+            if (SmartHomeSideMarkType == "罗马尼亚侧唛")
+            {
+                if (_data == null)
+                {
+                    SnackbarHelper.Show("请先选择一行订单数据", Severity.Warning);
+                    return;
+                }
+
+                var zi01 = (_data.GetString("ZI01") ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(zi01))
+                {
+                    SnackbarHelper.Show("当前行生产要求备注为空，找不到对应罗马尼亚模板，无法打印", Severity.Warning);
+                    AppendLog("罗马尼亚打印拦截：生产要求备注(ZI01)为空");
+                    return;
+                }
+
+                await PrintRomaniaSideMarkAsync(copies, customStart);
+                return;
+            }
+
+            if (SmartHomeSideMarkType == "挂衣杆侧唛")
+            {
+                await PrintHangRailSideMarkAsync(copies, customStart);
+                return;
+            }
+        }
 
         if (!int.TryParse(ReprintSerialStart?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var serialStart) ||
             !int.TryParse(ReprintSerialEnd?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var serialEnd) ||
@@ -1435,6 +1692,266 @@
             IsPrinting = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    /// <summary>罗马尼亚模板：条形码值 -> 模板文件路径（来自 wwwroot/templates）。</summary>
+    Dictionary<string, string>? _romaniaBarcodeTemplateMap;
+
+    async Task PrintHangRailSideMarkAsync(int copies, int startSerial)
+    {
+        var materialName = (_data?.GetString("materialName") ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(materialName))
+        {
+            SnackbarHelper.Show("物料名称为空，无法打印挂衣杆侧唛", Severity.Warning);
+            return;
+        }
+
+        var salesNo = (_data?.GetString("SalesOrderNo") ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(salesNo))
+            salesNo = (_data?.GetString("orderNo") ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(salesNo))
+        {
+            SnackbarHelper.Show("销售订单号为空，无法打印挂衣杆侧唛", Severity.Warning);
+            return;
+        }
+
+        const int maxPairs = 500;
+        if (copies > maxPairs)
+        {
+            SnackbarHelper.Show($"打印数量过大（一次最多 {maxPairs}）", Severity.Warning);
+            return;
+        }
+
+        var dateText = (ProductionDate ?? PrintDate ?? DateTime.Today).ToString("yyMMdd", CultureInfo.InvariantCulture);
+        var templatePath = Path.Combine(Env.WebRootPath, "templates", "挂衣杆侧唛模板.json");
+        if (!File.Exists(templatePath))
+        {
+            SnackbarHelper.Show("未找到挂衣杆模板（wwwroot/templates/挂衣杆侧唛模板.json）", Severity.Error);
+            return;
+        }
+
+        string templateJson;
+        try
+        {
+            templateJson = await File.ReadAllTextAsync(templatePath);
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show($"读取挂衣杆模板失败：{ex.Message}", Severity.Error);
+            return;
+        }
+
+        IsPrinting = true;
+        AppendLog($"挂衣杆打印：物料 {materialName}，销售单 {salesNo}，日期 {dateText}，起始序号 {startSerial}，打印数量 {copies} → 流水 {startSerial}..{startSerial + copies - 1}（每个流水 RIGHT+LEFT）");
+
+        try
+        {
+            for (var i = 0; i < copies; i++)
+            {
+                var serial = startSerial + i;
+                var serialLine = $"{salesNo}-{dateText}-{serial.ToString("D5", CultureInfo.InvariantCulture)}";
+                foreach (var title in new[] { "TYPE:RIGHT BODY", "TYPE:LEFT BODY" })
+                {
+                    var layout = JsonConvert.DeserializeObject<PrintLayoutModel>(templateJson);
+                    if (layout == null)
+                    {
+                        SnackbarHelper.Show("挂衣杆模板解析为空", Severity.Error);
+                        return;
+                    }
+
+                    layout.PrinterName = SelectedPrinter;
+                    layout.PaperWidthMm = 100f;
+                    layout.PaperHeightMm = 80f;
+                    layout.Copies = 1;
+                    layout.StartValue = 1;
+                    layout.PrintCount = 1;
+
+                    SetHangRailBlockText(layout, "title", title);
+                    SetHangRailBlockText(layout, "material_des", materialName);
+                    SetHangRailBlockText(layout, "serialnum", serialLine);
+
+                    await PrinterHelper.PrintLayoutAsync(JS, layout);
+                    AppendLog($"已提交：{title} / {serialLine}");
+                }
+            }
+
+            CustomSerialStart = (startSerial + copies).ToString(CultureInfo.InvariantCulture);
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "TrayLabel_printer");
+            AppendLog($"挂衣杆打印提交成功，下一起始序号 {CustomSerialStart}");
+            SnackbarHelper.Show("打印提交成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"挂衣杆打印异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static void SetHangRailBlockText(PrintLayoutModel layout, string blockName, string content)
+    {
+        var block = layout.Blocks?.FirstOrDefault(b =>
+            string.Equals(b.Name, blockName, StringComparison.OrdinalIgnoreCase));
+        if (block?.Text == null) return;
+        block.Text.Content = content ?? string.Empty;
+    }
+
+    async Task PrintRomaniaSideMarkAsync(int printCount, int startSerial)
+    {
+        var remark = (_data?.GetString("ZI01") ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(remark))
+        {
+            SnackbarHelper.Show("当前行生产要求备注为空，找不到对应罗马尼亚模板，无法打印", Severity.Warning);
+            AppendLog("罗马尼亚打印拦截：生产要求备注(ZI01)为空");
+            return;
+        }
+
+        var map = EnsureRomaniaTemplateMap();
+        if (map.Count == 0)
+        {
+            SnackbarHelper.Show("未找到罗马尼亚模板（wwwroot/templates）", Severity.Error);
+            return;
+        }
+
+        // 多个条码：换行 / 空格 / 斜杠 分隔；每个条码按起始序号..起始+数量-1 连续打
+        var tokens = SplitRomaniaRemarkTokens(remark);
+        var matched = new List<(string Barcode, string TemplatePath)>();
+        foreach (var token in tokens)
+        {
+            if (!map.TryGetValue(token, out var path))
+            {
+                AppendLog($"罗马尼亚备注片段未匹配模板，已跳过：{token}");
+                continue;
+            }
+
+            matched.Add((token, path));
+        }
+
+        if (matched.Count == 0)
+        {
+            SnackbarHelper.Show("当前行生产要求备注无法匹配罗马尼亚模板条码，不能打印", Severity.Warning);
+            AppendLog($"罗马尼亚打印拦截：备注未匹配到模板条码，备注={remark}");
+            return;
+        }
+
+        var endSerial = startSerial + printCount - 1;
+        IsPrinting = true;
+        AppendLog($"罗马尼亚打印：共 {matched.Count} 个条码，序号 {startSerial} 到 {endSerial}（每个条码连续打 {printCount} 张）");
+
+        try
+        {
+            foreach (var (barcode, templatePath) in matched)
+            {
+                string templateJson;
+                try
+                {
+                    templateJson = await File.ReadAllTextAsync(templatePath);
+                }
+                catch (Exception ex)
+                {
+                    SnackbarHelper.Show($"读取罗马尼亚模板失败：{ex.Message}", Severity.Error);
+                    AppendLog($"读取模板失败：{templatePath}，{ex.Message}");
+                    return;
+                }
+
+                for (var i = 0; i < printCount; i++)
+                {
+                    var serialNo = startSerial + i;
+                    var layout = JsonConvert.DeserializeObject<PrintLayoutModel>(templateJson);
+                    if (layout == null)
+                    {
+                        SnackbarHelper.Show("罗马尼亚模板解析为空", Severity.Error);
+                        return;
+                    }
+
+                    layout.PrinterName = SelectedPrinter;
+                    layout.PaperWidthMm = 100f;
+                    layout.PaperHeightMm = 80f;
+                    layout.Copies = 1;
+                    layout.StartValue = 1;
+                    layout.PrintCount = 1;
+
+                    await PrinterHelper.PrintLayoutAsync(JS, layout);
+                    AppendLog($"已提交：条码 {barcode} 第 {serialNo} 张，模板 {Path.GetFileName(templatePath)}");
+                }
+            }
+
+            await PrinterHelper.SaveLastUsedPrinterAsync(JS, SelectedPrinter, "TrayLabel_printer");
+            AppendLog("罗马尼亚打印提交成功。");
+            SnackbarHelper.Show($"打印提交成功（{matched.Count} 个条码 × {printCount} 张）", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"罗马尼亚打印异常：{ex.Message}");
+            SnackbarHelper.Show($"异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static List<string> SplitRomaniaRemarkTokens(string remark)
+    {
+        if (string.IsNullOrWhiteSpace(remark))
+            return new List<string>();
+
+        return remark
+            .Split(new[] { '\r', '\n', ' ', '/', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    Dictionary<string, string> EnsureRomaniaTemplateMap()
+    {
+        if (_romaniaBarcodeTemplateMap != null)
+            return _romaniaBarcodeTemplateMap;
+
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var dir = Path.Combine(Env.WebRootPath, "templates");
+        if (!Directory.Exists(dir))
+        {
+            _romaniaBarcodeTemplateMap = map;
+            return map;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(dir, "*罗马尼亚*.json", SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                var json = File.ReadAllText(file);
+                var layout = JsonConvert.DeserializeObject<PrintLayoutModel>(json);
+                var barcode = layout?.Blocks?
+                    .Select(b => b.Barcode?.Value)
+                    .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))
+                    ?.Trim();
+
+                if (string.IsNullOrWhiteSpace(barcode))
+                    continue;
+
+                if (map.ContainsKey(barcode))
+                {
+                    AppendLog($"罗马尼亚条码重复 {barcode}：已用 {Path.GetFileName(map[barcode])}，忽略 {Path.GetFileName(file)}");
+                    continue;
+                }
+
+                map[barcode] = file;
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"加载罗马尼亚模板失败：{Path.GetFileName(file)}，{ex.Message}");
+            }
+        }
+
+        _romaniaBarcodeTemplateMap = map;
+        AppendLog($"已加载罗马尼亚模板 {map.Count} 个（wwwroot/templates）");
+        return map;
     }
 
     public async ValueTask DisposeAsync()

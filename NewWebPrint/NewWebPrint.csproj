@@ -41,4 +41,8 @@
       <Content Update="wwwroot\downloads\*.*" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="wwwroot\templates\" />
+    </ItemGroup>
+
 </Project>

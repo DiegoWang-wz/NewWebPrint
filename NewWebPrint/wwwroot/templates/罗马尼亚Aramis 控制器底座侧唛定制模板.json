@@ -1,0 +1,72 @@
+{
+  "PrinterName": "Microsoft Print to PDF",
+  "PaperWidthMm": 100,
+  "PaperHeightMm": 80,
+  "Copies": 1,
+  "StartValue": 1,
+  "PrintCount": 1,
+  "BorderThicknessMm": 0.2,
+  "Blocks": [
+    {
+      "Name": "文本1",
+      "X": 5,
+      "Y": 8,
+      "Width": 91,
+      "Height": 16,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "Feronerie suport unitate de\ncontrol recliner",
+        "FontName": "Arial",
+        "FontSize": 17,
+        "Bold": false,
+        "Align": "center",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "条形码1",
+      "X": 10,
+      "Y": 26,
+      "Width": 80,
+      "Height": 28,
+      "ShowBorder": false,
+      "Barcode": {
+        "Value": "111000000166482",
+        "SafeMarginMm": 1,
+        "Format": "CODE_128",
+        "OffsetXMm": 0,
+        "ShowTextBelow": false,
+        "DigitFontSizePt": 6,
+        "DigitFontName": "Arial",
+        "DigitBold": false,
+        "DigitOffsetYMm": 0,
+        "CodeBodyHeightMm": 26,
+        "Charset": "UTF-8",
+        "ErrorCorrection": "M"
+      },
+      "DataBindGroupId": "3c284a4f0eea4f5daad3daf3d1b17e34",
+      "DataBindTint": "rgba(255, 152, 0, 0.38)"
+    },
+    {
+      "Name": "文本2",
+      "X": 10,
+      "Y": 55,
+      "Width": 80,
+      "Height": 11,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "111000000166482",
+        "FontName": "Arial",
+        "FontSize": 19,
+        "Bold": false,
+        "Align": "center",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      },
+      "DataBindGroupId": "3c284a4f0eea4f5daad3daf3d1b17e34",
+      "DataBindTint": "rgba(255, 152, 0, 0.38)"
+    }
+  ],
+  "IsRotate": false
+}

@@ -259,6 +259,8 @@
         get
         {
             var uri = Nav.ToBaseRelativePath(Nav.Uri);
+            var q = uri.IndexOf('?', StringComparison.Ordinal);
+            if (q >= 0) uri = uri[..q];
             if (uri.Contains('/')) uri = uri.Split('/')[0];
 
             return uri switch
@@ -281,6 +283,7 @@
                 "ProductBrandPrintCodeQuery" => "铭牌打印码查询",
                 "LdLabel" => "LD标签打印",
                 "MaterialLabel" => "物料标签",
+                "MaterialLabelProduction" => "生产入库标签",
                 "PrintDesign" => "标签绘制",
                 "serial-weight-debug" => "串口称重调试",
                 "test" => "测试页面",

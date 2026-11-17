@@ -1,5 +1,6 @@
-﻿using System.Data;
+using System.Data;
 using System.Globalization;
+using Microsoft.Data.SqlClient;
 using NewWebPrint.DataDtos;
 using NewWebPrint.Models;
 using NewWebPrint.Models.Api;
@@ -23,10 +24,17 @@ public partial class MaterialLabel
     [Inject] private IBrowserViewportService BrowserViewportService { get; set; } = null!;
     [Inject] private LocalAgentPrinterBootstrap PrinterBootstrap { get; set; } = null!;
 
+    /// <summary>对齐 WinForm 构造参数 type；URL ?type=smt 启用 V2 新码。</summary>
+    [SupplyParameterFromQuery(Name = "type")]
+    public string? LaunchType { get; set; }
+
     #region 公共 — 字段与生命周期
 
     private List<EWMLabelModel> printModelList = new();
     private EWMLabelModel? printModel;
+    /// <summary>常规标签无有效 HU 时的占位（与 WinForm 一致，12 个 0）。</summary>
+    const string HuPlaceholder = "000000000000";
+    string _currentLabelUniqueCodeV2 = string.Empty;
     private bool IsSearching;
     private string? SelectedPrinter;
     private string? DefaultPrinter;
@@ -40,6 +48,27 @@ public partial class MaterialLabel
     private bool IsGenerating;
     private MudTabs? tabsRef;
     private int activeTabIndex;
+    /// <summary>purchaseFunction 允许显示的逻辑 Tab：0生产 1采购 2物料 3销单 4交货。</summary>
+    List<int> VisibleLogicalTabs { get; set; } = [0, 1, 2, 3, 4];
+    /// <summary>当前面板对应的业务 Tab 索引（对齐 WinForm SelectedTab）。</summary>
+    int LogicalTab =>
+        activeTabIndex >= 0 && activeTabIndex < VisibleLogicalTabs.Count
+            ? VisibleLogicalTabs[activeTabIndex]
+            : 0;
+    bool ShowLogicalTab(int logical) => VisibleLogicalTabs.Contains(logical);
+
+    /// <summary>独立页 /MaterialLabelProduction：仅生产入库。</summary>
+    bool IsProductionOnlyPage
+    {
+        get
+        {
+            var path = NavManager.ToBaseRelativePath(NavManager.Uri);
+            var q = path.IndexOf('?', StringComparison.Ordinal);
+            if (q >= 0)
+                path = path[..q];
+            return path.Equals("MaterialLabelProduction", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     public string ProdOrderNo { get; set; } = string.Empty;
     public string ProdRemark { get; set; } = string.Empty;
@@ -53,8 +82,10 @@ public partial class MaterialLabel
     public string PrintPurchOrderNo { get; set; }
     public string PrintPurchLineNo { get; set; }
     public bool PrintIsStock { get; set; } = false;
-    public bool PrintIsMalaysia { get; set; }
-    public bool PrintIsMalaysia2 { get; set; }
+    /// <summary>由下方「马来专属」驱动，对应原 Only MAS 版式。</summary>
+    bool PrintIsMalaysia => string.Equals(SpecialPrint, "马来专属", StringComparison.Ordinal);
+    /// <summary>由下方「电子料纸箱」驱动，对应原 Only MAS2 版式。</summary>
+    bool PrintIsMalaysia2 => string.Equals(SpecialPrint, "电子料纸箱", StringComparison.Ordinal);
     public string SalesOrderNo { get; set; } = string.Empty;
     public string StockDeliveryOrderNo { get; set; } = string.Empty;
     public string PO_NO { get; set; } = string.Empty;
@@ -80,6 +111,8 @@ public partial class MaterialLabel
     public bool if_rotate { get; set; } = false;
     public bool if_qualify { get; set; } = true;
     public bool if_remark { get; set; } = true;
+    /// <summary>对齐 WinForm checkBox_nobatch：仅 100×80 + 生产入库时隐藏批次。</summary>
+    public bool HideBatch { get; set; }
 
     private Margin DynamicMargin = Margin.Dense;
     private int DynamicSpacing = 2;
@@ -87,10 +120,16 @@ public partial class MaterialLabel
     string _currentTray = string.Empty;
     string _totalTray = string.Empty;
 
-    const string PrintSettingsStorageKey = "MaterialLabel_printSettings";
-    const string LegacyPrinterStorageKey = "MaterialLabel_printer";
-    const string MalaysiaStorageKey = "MaterialLabel_is_malaysia";
-    const string Malaysia2StorageKey = "MaterialLabel_is_malaysia2";
+    /// <summary>两页各自独立记住打印机与打印设置。</summary>
+    string PrintSettingsStorageKey =>
+        IsProductionOnlyPage
+            ? "MaterialLabelProduction_printSettings"
+            : "MaterialLabel_printSettings";
+
+    string LegacyPrinterStorageKey =>
+        IsProductionOnlyPage
+            ? "MaterialLabelProduction_printer"
+            : "MaterialLabel_printer";
 
     sealed class MaterialLabelPrintSettings
     {
@@ -100,6 +139,7 @@ public partial class MaterialLabel
         public bool if_rotate { get; set; }
         public bool if_qualify { get; set; } = true;
         public bool if_remark { get; set; } = true;
+        public bool HideBatch { get; set; }
     }
 
 
@@ -108,7 +148,21 @@ public partial class MaterialLabel
         _objRef = DotNetObjectReference.Create(this);
         await LoadPrintSettingsAsync();
         await LoadWeightSettingsAsync();
-        await LoadMalaysiaSettingsAsync();
+        ApplyPurchaseFunctionConfig();
+        ApplyAutoRemarkOrderConfig();
+        ApplyMalaysiaConfigDefault();
+        ApplyProductionOnlyPrintDefaults();
+    }
+
+    /// <summary>生产入库独立页：固定 100×80 普通标签，不使用特殊打印/无批次。</summary>
+    void ApplyProductionOnlyPrintDefaults()
+    {
+        if (!IsProductionOnlyPage)
+            return;
+
+        PaperSize = "100*80";
+        SpecialPrint = "无";
+        HideBatch = false;
     }
 
     void AppendLog(string message)
@@ -130,7 +184,222 @@ public partial class MaterialLabel
         PO_NO = string.Empty;
         _customerPoNoForLabel = string.Empty;
         QrImage = null;
+        ResetFullBoxScanState(clearPrintedBoxes: true);
     }
+
+    #region 生产入库扫码满箱（仅 /MaterialLabelProduction）
+
+    /// <summary>物料编码 → 满箱数量（写死配置，可按现场增减）。</summary>
+    static readonly Dictionary<string, int> ProductionFullBoxQtyMap = new(StringComparer.Ordinal)
+    {
+        ["30117361"] = 96,
+        ["20042982"] = 54,
+        ["30170301"] = 63,
+        ["30169609"] = 72,
+        ["30172647"] = 42,
+        ["30169629"] = 54,
+        ["30172658"] = 30,
+        ["30149343"] = 30,
+    };
+
+    public string ScanBarcodeInput { get; set; } = string.Empty;
+    int FullBoxQty { get; set; }
+    int CurrentBoxScanCount { get; set; }
+    int PrintedBoxCount { get; set; }
+    /// <summary>仅扫满自动打印时置 true，禁止页面手动触发打印。</summary>
+    bool _allowProductionAutoPrint;
+    readonly HashSet<string> _scannedSerials = new(StringComparer.OrdinalIgnoreCase);
+
+    string FullBoxProgressText =>
+        FullBoxQty > 0
+            ? $"本箱 {CurrentBoxScanCount}/{FullBoxQty}　已打 {PrintedBoxCount} 箱"
+            : "未匹配满箱数量";
+
+    void ResetFullBoxScanState(bool clearPrintedBoxes)
+    {
+        ScanBarcodeInput = string.Empty;
+        FullBoxQty = 0;
+        FullBoxQtyInput = string.Empty;
+        CurrentBoxScanCount = 0;
+        _scannedSerials.Clear();
+        if (clearPrintedBoxes)
+            PrintedBoxCount = 0;
+    }
+
+    static string NormalizeMaterialCode(string? code) =>
+        PrinterHelper.ClearFrontZreo(code?.Trim());
+
+    bool TryResolveFullBoxQty(string? materialCode, out int qty)
+    {
+        qty = 0;
+        var key = NormalizeMaterialCode(materialCode);
+        if (string.IsNullOrEmpty(key))
+            return false;
+        return ProductionFullBoxQtyMap.TryGetValue(key, out qty);
+    }
+
+    void ApplyFullBoxAfterQuery()
+    {
+        if (!IsProductionOnlyPage || printModel is null)
+            return;
+
+        ResetFullBoxScanState(clearPrintedBoxes: true);
+        PrintCount = "1";
+
+        if (!TryResolveFullBoxQty(printModel.materialCode, out var qty) || qty <= 0)
+        {
+            SnackbarHelper.Show(
+                $"物料 {NormalizeMaterialCode(printModel.materialCode)} 未配置满箱数量，无法扫码出标",
+                Severity.Warning);
+            AppendLog($"满箱数量未配置：{printModel.materialCode}");
+            return;
+        }
+
+        FullBoxQty = qty;
+        FullBoxQtyInput = qty.ToString(CultureInfo.InvariantCulture);
+        BoxNum = qty.ToString(CultureInfo.InvariantCulture);
+        SumNum = qty.ToString(CultureInfo.InvariantCulture);
+        AppendLog($"满箱数量：{qty}（物料 {NormalizeMaterialCode(printModel.materialCode)}）");
+    }
+
+    /// <summary>
+    /// 条码：前 2 位厂区/类型（字母或数字，如 XH、1H）+ 订单号 + 序列号。
+    /// 例：XH1027895153982 → 订单 102789515，序列 3982；
+    ///     1H1015168760002 → 订单 101516876，序列 0002。
+    /// </summary>
+    bool TryParseProductionScanBarcode(string raw, out string orderInBarcode, out string serial)
+    {
+        orderInBarcode = string.Empty;
+        serial = string.Empty;
+        var code = (raw ?? string.Empty).Trim();
+        if (code.Length < 4)
+            return false;
+        // 前缀可为 XH / 1H 等，不要求两位都是字母
+        if (!char.IsLetterOrDigit(code[0]) || !char.IsLetterOrDigit(code[1]))
+            return false;
+
+        var body = code[2..];
+        var expectedOrder = NormalizeMaterialCode(printModel?.orderNo);
+        if (string.IsNullOrEmpty(expectedOrder))
+            expectedOrder = NormalizeMaterialCode(ProdOrderNo);
+
+        if (string.IsNullOrEmpty(expectedOrder))
+            return false;
+
+        if (!body.StartsWith(expectedOrder, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        serial = body[expectedOrder.Length..];
+        if (string.IsNullOrWhiteSpace(serial))
+            return false;
+
+        orderInBarcode = expectedOrder;
+        return true;
+    }
+
+    /// <summary>生产入库页手动填写的满箱数量文本。</summary>
+    string FullBoxQtyInput
+    {
+        get => _fullBoxQtyInput;
+        set
+        {
+            _fullBoxQtyInput = value ?? string.Empty;
+            FullBoxQty = int.TryParse(_fullBoxQtyInput.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0
+                ? n
+                : 0;
+        }
+    }
+
+    string _fullBoxQtyInput = string.Empty;
+
+    async Task OnScanBarcodeKeyDown(KeyboardEventArgs e)
+    {
+        if (!IsProductionOnlyPage)
+            return;
+        if (e.Key is not ("Enter" or "NumpadEnter"))
+            return;
+
+        await ProcessScanBarcodeAsync();
+    }
+
+    async Task ProcessScanBarcodeAsync()
+    {
+        if (!IsProductionOnlyPage)
+            return;
+
+        var raw = ScanBarcodeInput?.Trim() ?? string.Empty;
+        ScanBarcodeInput = string.Empty;
+
+        if (string.IsNullOrEmpty(raw))
+            return;
+
+        if (IsPrinting || IsSearching)
+        {
+            SnackbarHelper.Show("正在处理中，请稍后再扫", Severity.Warning);
+            return;
+        }
+
+        if (printModel is null || string.IsNullOrEmpty(printModel.orderNo))
+        {
+            SnackbarHelper.Show("请先查询生产订单", Severity.Warning);
+            return;
+        }
+
+        if (FullBoxQty <= 0)
+        {
+            SnackbarHelper.Show("当前物料未配置满箱数量", Severity.Warning);
+            return;
+        }
+
+        if (!TryParseProductionScanBarcode(raw, out var orderInBarcode, out var serial))
+        {
+            var expected = NormalizeMaterialCode(printModel.orderNo);
+            SnackbarHelper.Show($"条码无效或订单不匹配（需含订单 {expected}）", Severity.Error);
+            AppendLog($"扫码拒绝：{raw}");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!_scannedSerials.Add(serial))
+        {
+            SnackbarHelper.Show($"序列号重复：{serial}", Severity.Warning);
+            AppendLog($"重复扫码：{raw}");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        CurrentBoxScanCount++;
+        AppendLog($"扫码 OK：{raw}（{orderInBarcode}/{serial}）本箱 {CurrentBoxScanCount}/{FullBoxQty}");
+        await InvokeAsync(StateHasChanged);
+
+        if (CurrentBoxScanCount < FullBoxQty)
+            return;
+
+        // 扫满一箱 → 只打 1 张生产入库标签（不打海外配套）；失败则保留本箱进度
+        BoxNum = FullBoxQty.ToString(CultureInfo.InvariantCulture);
+        SumNum = FullBoxQty.ToString(CultureInfo.InvariantCulture);
+        PrintCount = "1";
+        AppendLog($"已满箱 {FullBoxQty}，自动打印生产入库标签…");
+        var boxesBefore = PrintedBoxCount;
+        _allowProductionAutoPrint = true;
+        try
+        {
+            await PrintSubmit();
+        }
+        finally
+        {
+            _allowProductionAutoPrint = false;
+        }
+
+        if (PrintedBoxCount > boxesBefore)
+            CurrentBoxScanCount = 0;
+        else
+            SnackbarHelper.Show("自动打印失败，本箱进度已保留，请检查打印机后继续扫码满箱重试", Severity.Warning);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    #endregion
 
     string GetLangParam()
     {
@@ -378,8 +647,27 @@ public partial class MaterialLabel
     static string BuildTempLabelQrValue(string materialCode, string batchNo) =>
         "//" + materialCode + "//////BATCH/" + batchNo;
 
-    bool ShouldPrintTempBoxLabels() =>
-        activeTabIndex == 0 && !PrintIsMalaysia && !PrintIsMalaysia2;
+    bool ShouldPrintTempBoxLabels()
+    {
+        // 生产入库独立页：只打一张生产入库标签，不打海外配套
+        if (IsProductionOnlyPage)
+            return false;
+
+        // 对齐 WinForm：V2(smt) 跳过配套，避免与新码流程混打
+        if (UseProductInboundQrV2())
+            return false;
+
+        return LogicalTab == 0 && !PrintIsMalaysia && !PrintIsMalaysia2;
+    }
+
+    /// <summary>对齐 WinForm ShouldHideBatchForPrint：100×80 + 勾选无批次 + 生产入库。</summary>
+    bool ShouldHideBatchForPrint() =>
+        string.Equals(PaperSize, "100*80", StringComparison.Ordinal)
+        && HideBatch
+        && LogicalTab == 0;
+
+    string GetBatchForDisplay() =>
+        ShouldHideBatchForPrint() ? string.Empty : (batchNo ?? string.Empty);
 
     #endregion
 
@@ -870,6 +1158,7 @@ public partial class MaterialLabel
             printModel = model;
             printModelList = new List<EWMLabelModel> { printModel };
             await TryLoadCustomerPoForProductionOrderAsync(productionNo);
+            ApplyFullBoxAfterQuery();
             AppendLog($"查询成功：{productionNo}");
             SnackbarHelper.Show("查询成功", Severity.Success);
         }
@@ -1104,7 +1393,7 @@ public partial class MaterialLabel
 
     #region 打印 — 公共
 
-    bool IsProductionTab() => activeTabIndex == 0;
+    bool IsProductionTab() => LogicalTab == 0;
 
     string GetTabRemark() =>
         IsProductionTab() ? ProdRemark : PrintRemark;
@@ -1126,31 +1415,232 @@ public partial class MaterialLabel
 
     async Task<string> GetHUAsync(string factory, string guid)
     {
-        var resp = await SapEwmService.InvokeAsync(
-            "GetHU",
-            new Dictionary<string, string?>
-            {
-                ["factory"] = factory,
-                ["guid"] = guid
-            },
-            logToBrowserConsole: false);
+        try
+        {
+            var resp = await SapEwmService.InvokeAsync(
+                "GetHU",
+                new Dictionary<string, string?>
+                {
+                    ["factory"] = factory,
+                    ["guid"] = guid
+                },
+                logToBrowserConsole: false);
 
-        if (resp.Code != ApiResultCode.Success || resp.Data is null)
-            return string.Empty;
+            if (resp.Code != ApiResultCode.Success || resp.Data is null)
+                return HuPlaceholder;
 
-        return resp.Data.ResultText ?? resp.Data.JsonResult ?? string.Empty;
+            return NormalizeHuValue(resp.Data.ResultText ?? resp.Data.JsonResult ?? string.Empty);
+        }
+        catch (Exception ex)
+        {
+            AppendLog("GetHU异常，使用占位HU：" + ex.Message);
+            return HuPlaceholder;
+        }
     }
+
+    /// <summary>仅允许合法 HU 进二维码；空/JSON 报错等一律回退占位符（对齐 WinForm NormalizeHuValue）。</summary>
+    static string NormalizeHuValue(string? hu)
+    {
+        if (string.IsNullOrWhiteSpace(hu))
+            return HuPlaceholder;
+
+        var value = hu.Trim();
+        if (value.Contains('{', StringComparison.Ordinal)
+            || value.Contains('}', StringComparison.Ordinal)
+            || value.Contains("\"TYPE\"", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("\"MESSAGE\"", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("Invalid request", StringComparison.OrdinalIgnoreCase)
+            || value.Contains('/'))
+            return HuPlaceholder;
+
+        return value;
+    }
+
+    bool IsSmtMode() =>
+        string.Equals(LaunchType, "smt", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>V2：type=smt 且当前为生产入库 / 采购收货 / 物料打印。</summary>
+    bool UseProductInboundQrV2() =>
+        IsSmtMode() && LogicalTab is 0 or 1 or 2;
+
+    string BuildProductInboundQrValueV2(
+        string? orderNo,
+        string? orderLineNo,
+        string? materialCode,
+        string? batchQuantity,
+        string? uniqueCode,
+        string? salesOrderNo,
+        string? salesOrderLineNo,
+        string? batch,
+        string? trayQuantity,
+        bool hideBatch = false) =>
+        string.Join("/",
+            orderNo ?? string.Empty,
+            orderLineNo ?? string.Empty,
+            materialCode ?? string.Empty,
+            batchQuantity ?? string.Empty,
+            batchQuantity ?? string.Empty,
+            uniqueCode ?? string.Empty,
+            salesOrderNo ?? string.Empty,
+            salesOrderLineNo ?? string.Empty,
+            "BATCH",
+            hideBatch ? string.Empty : (batch ?? string.Empty),
+            trayQuantity ?? string.Empty);
+
+    async Task<string> BuildProductInboundQrValueV2FromModelAsync(string? batch, bool hideBatch = false)
+    {
+        if (printModel is null)
+            throw new InvalidOperationException("printModel 为空，无法生成新版二维码。");
+
+        var uniqueCode = await NextLabelUniqueCodeV2Async();
+        _currentLabelUniqueCodeV2 = uniqueCode;
+
+        return BuildProductInboundQrValueV2(
+            printModel.orderNo,
+            printModel.orderLineNo,
+            printModel.materialCode,
+            printModel.amountQuantity,
+            uniqueCode,
+            printModel.SalesOrderNo,
+            printModel.SalesOrderNolineNO,
+            batch,
+            printModel.boxQuantity,
+            hideBatch);
+    }
+
+    /// <summary>从 JClogin.LabelUniqueCodeSeq 取号：S + yyMMdd + 5 位流水。</summary>
+    async Task<string> NextLabelUniqueCodeV2Async()
+    {
+        var connStr = Config.GetConnectionString("JClogin_connStr");
+        if (string.IsNullOrWhiteSpace(connStr))
+            throw new InvalidOperationException("未配置 ConnectionStrings:JClogin_connStr。");
+
+        var bizDate = DateTime.Today;
+        const string sql = @"
+MERGE dbo.LabelUniqueCodeSeq WITH (HOLDLOCK) AS t
+USING (SELECT CAST(@BizDate AS DATE) AS BizDate) AS s
+ON t.BizDate = s.BizDate
+WHEN MATCHED THEN
+    UPDATE SET CurrentSeq = t.CurrentSeq + 1, UpdatedAt = GETDATE()
+WHEN NOT MATCHED THEN
+    INSERT (BizDate, CurrentSeq, UpdatedAt) VALUES (s.BizDate, 1, GETDATE())
+OUTPUT INSERTED.CurrentSeq;";
+
+        await using var conn = new SqlConnection(connStr);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@BizDate", SqlDbType.Date).Value = bizDate;
+        await conn.OpenAsync();
+        var result = await cmd.ExecuteScalarAsync();
+        if (result is null or DBNull)
+            throw new InvalidOperationException("获取标签唯一码流水号失败。");
+
+        var seq = Convert.ToInt32(result);
+        if (seq is < 1 or > 99999)
+            throw new InvalidOperationException("当天唯一码流水号已超出 5 位上限(99999)。");
+
+        return "S" + bizDate.ToString("yyMMdd") + seq.ToString("00000");
+    }
+
+    /// <summary>80×60 / 60×40 数量行；V2 时拼总数与唯一码。</summary>
+    string FormatSmallLabelQuantityPcsText()
+    {
+        var qty = printModel?.boxQuantity ?? BoxNum ?? string.Empty;
+        if (!UseProductInboundQrV2())
+            return qty + "   Pcs";
+
+        var total = printModel?.amountQuantity ?? SumNum ?? string.Empty;
+        var uid = _currentLabelUniqueCodeV2 ?? string.Empty;
+        if (IsChineseLang())
+            return qty + " Pcs | " + total + " 总数 | " + uid;
+        return qty + " Pcs | " + total + " SUM| " + uid;
+    }
+
+    bool IsBilingualPrintMode() =>
+        string.Equals(SpecialPrint, "双语打印", StringComparison.Ordinal);
 
     bool ValidateSpecialPrintMode()
     {
-        if (string.Equals(SpecialPrint, "无", StringComparison.Ordinal))
+        if (string.Equals(SpecialPrint, "无", StringComparison.Ordinal)
+            || IsBilingualPrintMode()
+            || PrintIsMalaysia
+            || PrintIsMalaysia2)
             return true;
 
-        SnackbarHelper.Show("请先选择「无」特殊打印，其它模式尚未实现", Severity.Warning);
+        SnackbarHelper.Show("当前特殊打印模式不可用", Severity.Warning);
         return false;
     }
 
-    async Task<bool> PreparePrintDataAsync() => activeTabIndex switch
+    /// <summary>双语：字段名双行中英 + 缩小字号（对齐 WinForm is_2L）。</summary>
+    string FieldCaption(string zhKey, string enFallback)
+    {
+        if (!IsBilingualPrintMode())
+            return T[zhKey];
+        // 与 WinForm 固定中英双行一致，避免资源串已是单语时对不齐
+        return zhKey switch
+        {
+            "Supplier" => "供应商\nSupplier",
+            "Order&Row" => "订单&行\nOrder&row",
+            "SaleNo&Row" => "销单&行\nSaleNo.&row",
+            "Material" => "物料\nMaterial",
+            "MaterialDes." => "物料描述\nMaterial Des.",
+            "Model" => "规格型号\nModel",
+            "Quantity" => "数量\nQuantity",
+            "TotalQuantity" => "总数量\nTotalQuantity",
+            _ => T[zhKey] + "\n" + enFallback
+        };
+    }
+
+    float FieldCaptionFontSize(float normal) =>
+        IsBilingualPrintMode() ? Math.Min(normal, 8f) : normal;
+
+    /// <summary>小标签字段名：双语固定中英双行；否则按界面语言单行（对齐 WinForm 60×40/80×60）。</summary>
+    string SmallFieldCaption(string role)
+    {
+        if (IsBilingualPrintMode())
+        {
+            return role switch
+            {
+                "supplier" => "供货组织\nSupplier",
+                "order" => "单号行号\nOrder&row",
+                "material" => "物料编号\nMaterial",
+                "name" => "物料名称\nMa Des.",
+                "model" => "规格型号\nModel",
+                "qty" => "数量\nQuantity",
+                _ => role
+            };
+        }
+
+        var zh = IsChineseLang();
+        return role switch
+        {
+            "supplier" => zh ? "供货组织" : "Supplier",
+            "order" => zh ? "单号行号" : "Order&row",
+            "material" => zh ? "物料编号" : "Material",
+            "name" => zh ? "物料名称" : "Ma Des.",
+            "model" => zh ? "规格型号" : "Model",
+            "qty" => zh ? "数量" : "Quantity",
+            _ => role
+        };
+    }
+
+    float SmallFieldCaptionFontSize(float paperDefault) =>
+        IsBilingualPrintMode()
+            ? (string.Equals(PaperSize, "60*40", StringComparison.Ordinal) ? 5f : 7f)
+            : paperDefault;
+
+    /// <summary>小标签工厂/行号格（对齐 WinForm grid9）。</summary>
+    string BuildSmallLabelFactoryOrLineNo()
+    {
+        if (LogicalTab is 1 or 4)
+            return printModel!.orderLineNo ?? string.Empty;
+
+        if (LogicalTab == 0 && !string.IsNullOrEmpty(location_code))
+            return $"{printModel!.factory}->{location_code}";
+
+        return printModel!.factory ?? string.Empty;
+    }
+
+    async Task<bool> PreparePrintDataAsync() => LogicalTab switch
     {
         0 => await Production_GenerateAsync(),
         1 => await Purchase_GenerateAsync(),
@@ -1161,7 +1651,7 @@ public partial class MaterialLabel
     };
 
     (List<PrintBlock>? blocks, float borderThickness) GetPrintBlocksForActiveTab(string paperSize) =>
-        activeTabIndex switch
+        LogicalTab switch
         {
             0 => GetProductionPrintBlocks(paperSize),
             1 => GetPurchasePrintBlocks(paperSize),
@@ -1177,6 +1667,7 @@ public partial class MaterialLabel
         "100*80" => ResolvePrint100x80(0),
         "100*120" => (Production_Print100x120(), 0.4f),
         "60*40" => (Production_Print60x40(), 0.3f),
+        "297*210" => (BuildA4UsLabelPrintBlocks(), 0f),
         _ => (null, 0.2f)
     };
 
@@ -1186,6 +1677,7 @@ public partial class MaterialLabel
         "100*80" => ResolvePrint100x80(1),
         "100*120" => (Purchase_Print100x120(), 0.4f),
         "60*40" => (Purchase_Print60x40(), 0.3f),
+        "297*210" => (BuildA4UsLabelPrintBlocks(), 0f),
         _ => (null, 0.2f)
     };
 
@@ -1195,6 +1687,7 @@ public partial class MaterialLabel
         "100*80" => ResolvePrint100x80(2),
         "100*120" => (Material_Print100x120(), 0.4f),
         "60*40" => (Material_Print60x40(), 0.3f),
+        "297*210" => (BuildA4UsLabelPrintBlocks(), 0f),
         _ => (null, 0.2f)
     };
 
@@ -1204,6 +1697,7 @@ public partial class MaterialLabel
         "100*80" => ResolvePrint100x80(3),
         "100*120" => (SalesStock_Print100x120(), 0.4f),
         "60*40" => (SalesStock_Print60x40(), 0.3f),
+        "297*210" => (BuildA4UsLabelPrintBlocks(), 0f),
         _ => (null, 0.2f)
     };
 
@@ -1213,8 +1707,75 @@ public partial class MaterialLabel
         "100*80" => ResolvePrint100x80(4),
         "100*120" => (Delivery_Print100x120(), 0.4f),
         "60*40" => (Delivery_Print60x40(), 0.3f),
+        "297*210" => (BuildA4UsLabelPrintBlocks(), 0f),
         _ => (null, 0.2f)
     };
+
+    /// <summary>
+    /// A4 美国标签：设计 297×210，打印强制旋转 90°（对齐 WinForm DrawA4UsLabelPage）。
+    /// 仅物料号 / 数量 EA / BN.批次 / 右上二维码。
+    /// </summary>
+    List<PrintBlock> BuildA4UsLabelPrintBlocks()
+    {
+        var qty = (printModel?.boxQuantity ?? BoxNum ?? string.Empty).Trim();
+        var qtyText = string.IsNullOrEmpty(qty) ? string.Empty : qty + " EA";
+        var batchDisplay = GetBatchForDisplay();
+        var batchText = string.IsNullOrEmpty(batchDisplay) ? "BN. " : "BN. " + batchDisplay;
+
+        return new List<PrintBlock>
+        {
+            new()
+            {
+                Name = "A4 Material", X = 6, Y = 37, Width = 287, Height = 53, ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = printModel?.materialCode ?? string.Empty,
+                    FontName = "Arial",
+                    FontSize = 100,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            },
+            new()
+            {
+                Name = "A4 Qty", X = 5, Y = 91, Width = 288, Height = 53, ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = qtyText,
+                    FontName = "Arial",
+                    FontSize = 100,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            },
+            new()
+            {
+                Name = "A4 Batch", X = 6, Y = 144, Width = 287, Height = 53, ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = batchText,
+                    FontName = "Arial",
+                    FontSize = 90,
+                    Bold = true,
+                    Align = "center",
+                    VerticalAlign = "middle"
+                }
+            },
+            new()
+            {
+                Name = "A4 QR", X = 245, Y = 5, Width = 35, Height = 35, ShowBorder = false,
+                Qr = new QrElement
+                {
+                    Value = QrValue ?? string.Empty,
+                    ErrorCorrection = "M",
+                    Charset = "UTF-8",
+                    SafeMarginMm = 1f
+                }
+            }
+        };
+    }
 
     (List<PrintBlock> blocks, float borderThickness) ResolvePrint100x80(int tabIndex)
     {
@@ -1237,6 +1798,13 @@ public partial class MaterialLabel
     async Task PrintSubmit()
     {
         if (IsPrinting) return;
+
+        // 生产入库独立页：禁止手动打印，只能扫满后自动出标
+        if (IsProductionOnlyPage && !_allowProductionAutoPrint)
+        {
+            SnackbarHelper.Show("本页仅支持扫码满箱后自动打印，不可手动补打", Severity.Warning);
+            return;
+        }
 
         if (!ValidateSpecialPrintMode())
             return;
@@ -1287,6 +1855,10 @@ public partial class MaterialLabel
                 return;
             }
 
+            // A4 美国标签：设计 297×210，强制旋转 90°（对齐 WinForm）
+            var forceRotate = string.Equals(PaperSize, "297*210", StringComparison.Ordinal)
+                              || if_rotate;
+
             var layout = new PrintLayoutModel
             {
                 PrinterName = SelectedPrinter,
@@ -1298,10 +1870,10 @@ public partial class MaterialLabel
                 GapMm = null,
                 BorderThicknessMm = borderThickness,
                 Blocks = list,
-                IsRotate = if_rotate,
+                IsRotate = forceRotate,
             };
 
-            AppendLog($"发送打印：Tab={activeTabIndex} | {SelectedPrinter} | {w}×{h}mm | 数量={count}");
+            AppendLog($"发送打印：Tab={LogicalTab} | {SelectedPrinter} | {w}×{h}mm | 数量={count}");
 
             await PrinterHelper.PrintLayoutAsync(JS, layout);
             await SavePrintSettingsAsync();
@@ -1309,6 +1881,9 @@ public partial class MaterialLabel
 
             if (ShouldPrintTempBoxLabels())
                 await PrintTempBoxExtraLabelsAsync(count);
+
+            if (IsProductionOnlyPage && FullBoxQty > 0)
+                PrintedBoxCount++;
 
             SnackbarHelper.Show("打印提交成功", Severity.Success);
         }
@@ -1511,17 +2086,20 @@ public partial class MaterialLabel
 
     List<PrintBlock> Production_Print60x40()
     {
+        var labelFs = SmallFieldCaptionFontSize(6);
+        var valueFs = IsBilingualPrintMode() ? 6f : 6f;
+        var batchDisplay = GetBatchForDisplay();
         return new List<PrintBlock>
         {
             new()
             {
                 Name = "Block 1", X = 2, Y = 3, Width = 12, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = "供货组织", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("supplier"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 2", X = 14, Y = 3, Width = 29, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = printModel!.supplier, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = printModel!.supplier, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -1531,62 +2109,62 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 4", X = 2, Y = 8, Width = 12, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = "单号行号", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("order"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 5", X = 14, Y = 8, Width = 14, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = printModel.orderNo, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = printModel.orderNo, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 6", X = 28, Y = 8, Width = 15, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = printModel.factory + printModel.SALES_WERKS, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = BuildSmallLabelFactoryOrLineNo(), FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 7", X = 2, Y = 13, Width = 12, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = "物料编号", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("material"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 8", X = 14, Y = 13, Width = 14, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialCode, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = printModel.materialCode, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 9", X = 28, Y = 13, Width = 15, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = batchNo, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = batchDisplay, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 10", X = 2, Y = 18, Width = 12, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = "物料名称", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("name"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 11", X = 14, Y = 18, Width = 44, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialName, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = printModel.materialName, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 12", X = 2, Y = 23, Width = 12, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = "规格型号", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("model"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 13", X = 14, Y = 23, Width = 44, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialModel_zh, FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = printModel.materialModel_zh, FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 14", X = 2, Y = 30, Width = 12, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = "数量", FontName = "Arial", FontSize = 6, Bold = true, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = SmallFieldCaption("qty"), FontName = "Arial", FontSize = labelFs, Bold = true, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 15", X = 14, Y = 30, Width = 44, Height = 5, ShowBorder = true,
-                Text = new TextElement { Content = BoxNum + "   Pcs", FontName = "Arial", FontSize = 6, Bold = false, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FormatSmallLabelQuantityPcsText(), FontName = "Arial", FontSize = valueFs, Bold = false, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -1602,17 +2180,20 @@ public partial class MaterialLabel
 
     List<PrintBlock> Production_Print80x60()
     {
+        var labelFs = SmallFieldCaptionFontSize(8f);
+        var valueFs = IsBilingualPrintMode() ? 8f : 8f;
+        var batchDisplay = GetBatchForDisplay();
         return new List<PrintBlock>
         {
             new()
             {
                 Name = "供货组织", X = 2, Y = 2, Width = 16, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = "供货组织", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("supplier"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "supplier", X = 18, Y = 2, Width = 40, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = printModel!.supplier, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = printModel!.supplier, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
@@ -1622,62 +2203,62 @@ public partial class MaterialLabel
             new()
             {
                 Name = "单号行号", X = 2, Y = 9, Width = 16, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = "单号行号", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("order"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "orderLineNo", X = 18, Y = 9, Width = 20, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = printModel.orderNo, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = printModel.orderNo, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "factory", X = 38, Y = 9, Width = 20, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = printModel.factory + printModel.SALES_WERKS, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = BuildSmallLabelFactoryOrLineNo(), FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "物料编号", X = 2, Y = 16, Width = 16, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = "物料编号", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("material"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "materialCode", X = 18, Y = 16, Width = 20, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialCode, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = printModel.materialCode, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "Batch", X = 38, Y = 16, Width = 20, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = batchNo, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = batchDisplay, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "物料名称", X = 2, Y = 23, Width = 16, Height = 9, ShowBorder = true,
-                Text = new TextElement { Content = "物料名称", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("name"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "materialName", X = 18, Y = 23, Width = 60, Height = 9, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialName, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = printModel.materialName, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "规格型号", X = 2, Y = 32, Width = 16, Height = 14, ShowBorder = true,
-                Text = new TextElement { Content = "规格型号", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("model"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "materialModel", X = 18, Y = 32, Width = 60, Height = 14, ShowBorder = true,
-                Text = new TextElement { Content = printModel.materialModel_zh, FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = printModel.materialModel_zh, FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "数量", X = 2, Y = 46, Width = 16, Height = 8, ShowBorder = true,
-                Text = new TextElement { Content = "数量", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = SmallFieldCaption("qty"), FontSize = labelFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
                 Name = "PCS", X = 18, Y = 46, Width = 60, Height = 8, ShowBorder = true,
-                Text = new TextElement { Content = BoxNum + "   Pcs", FontSize = 8f, Bold = true, Align = "left", VerticalAlign = "center" }
+                Text = new TextElement { Content = FormatSmallLabelQuantityPcsText(), FontSize = valueFs, Bold = true, Align = "left", VerticalAlign = "center" }
             },
             new()
             {
@@ -1786,12 +2367,13 @@ public partial class MaterialLabel
     string BuildOrderLineNo100x120(int tabIndex) => tabIndex switch
     {
         0 => printModel!.factory,
-        3 or 4 => printModel!.orderLineNo,
+        // 采购/销单库存/交货：对齐 WinForm 打 orderLineNo
+        1 or 3 or 4 => printModel!.orderLineNo,
         _ => $"{printModel!.factory}->{printModel.SALES_WERKS}"
     };
 
-    /// <summary>100×80 物料行第二格：均为批次号（WinForm grid16）。</summary>
-    string BuildBatchCell100x80() => batchNo ?? string.Empty;
+    /// <summary>100×80 物料行第二格：均为批次号（WinForm grid16）；无批次时留空。</summary>
+    string BuildBatchCell100x80() => GetBatchForDisplay();
 
     static (float x, float y, float w, float h) MasTableGrid(float xFrac, float yFrac, float wFrac, float hFrac) =>
         (1f + 96f * xFrac, 3f + 76f * yFrac, 96f * wFrac, 76f * hFrac);
@@ -1890,10 +2472,17 @@ public partial class MaterialLabel
         return " " + retext + " :" + tabRemark;
     }
 
-    string BuildMalaysiaMasMaterialText(int tabIndex) =>
-        tabIndex == 1
-            ? printModel!.materialCode + (printModel.ZEIVR ?? string.Empty)
-            : $"{printModel!.materialCode}({batchNo})";
+    /// <summary>马来专属：采购不展示 ZEIVR（对齐 WinForm）；其它 Tab 物料号(批次)。</summary>
+    string BuildMalaysiaMasMaterialText(int tabIndex)
+    {
+        if (tabIndex == 1)
+            return printModel!.materialCode;
+
+        var batchDisplay = GetBatchForDisplay();
+        return string.IsNullOrEmpty(batchDisplay)
+            ? printModel!.materialCode
+            : $"{printModel!.materialCode}({batchDisplay})";
+    }
 
     /// <summary>对齐 WinForm <c>is_malaysia</c> 100×80 版式。</summary>
     List<PrintBlock> BuildMalaysiaMasPrint100x80(int tabIndex)
@@ -1994,17 +2583,21 @@ public partial class MaterialLabel
     {
         var (salesOrderNo, salesOrderLineNo) = NormalizeSalesOrderFields();
         var datetime = BuildLabelDateTimeText();
+        // V2：唯一码画在日期格下半（对齐 WinForm DrawLabelUniqueCodeV2InQualifiedRow）
+        if (UseProductInboundQrV2() && !string.IsNullOrEmpty(_currentLabelUniqueCodeV2))
+            datetime = datetime + "\n" + _currentLabelUniqueCodeV2;
         var quality = if_qualify ? T["Qualified"] + "√" : T["Qualified"];
         var remark = BuildPrintRemark();
         var batchCell = BuildBatchCell100x80();
         var isPurchaseTab = tabIndex == 1;
+        var labelFs = FieldCaptionFontSize(10);
 
         var blocks = new List<PrintBlock>
         {
             new()
             {
                 Name = "Block 1", X = 2, Y = 4, Width = 25, Height = 8, ShowBorder = true,
-                Text = new TextElement { Content = T["Supplier"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Supplier", "Supplier"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2019,7 +2612,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 4", X = 2, Y = 12, Width = 25, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = T["Order&Row"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Order&Row", "Order&row"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2034,7 +2627,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 7", X = 2, Y = 19, Width = 25, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = T["SaleNo&Row"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("SaleNo&Row", "SaleNo.&row"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2049,7 +2642,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 10", X = 2, Y = 26, Width = 25, Height = 7, ShowBorder = true,
-                Text = new TextElement { Content = T["Material"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Material", "Material"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2064,7 +2657,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 13", X = 2, Y = 33, Width = 25, Height = 13, ShowBorder = true,
-                Text = new TextElement { Content = T["MaterialDes."], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("MaterialDes.", "Material Des."), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2074,7 +2667,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 15", X = 2, Y = 46, Width = 25, Height = 13, ShowBorder = true,
-                Text = new TextElement { Content = T["Model"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Model", "Model"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2084,7 +2677,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 17", X = 2, Y = 59, Width = 25, Height = 8, ShowBorder = true,
-                Text = new TextElement { Content = T["Quantity"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Quantity", "Quantity"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2094,7 +2687,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 19", X = 47, Y = 59, Width = 33, Height = 8, ShowBorder = true,
-                Text = new TextElement { Content = T["TotalQuantity"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("TotalQuantity", "TotalQuantity"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2153,19 +2746,23 @@ public partial class MaterialLabel
         return blocks;
     }
 
-    List<PrintBlock> BuildStandardPrint100x120(string orderLineNo, bool bold)
+    List<PrintBlock> BuildStandardPrint100x120(string orderLineNo, int tabIndex, bool bold)
     {
         var (salesOrderNo, salesOrderLineNo) = NormalizeSalesOrderFields();
         var datetime = BuildLabelDateTimeText();
+        if (UseProductInboundQrV2() && !string.IsNullOrEmpty(_currentLabelUniqueCodeV2))
+            datetime = datetime + "\n" + _currentLabelUniqueCodeV2;
         var quality = if_qualify ? T["Qualified"] + "√" : T["Qualified"];
         var remark = BuildPrintRemark();
+        var isPurchaseTab = tabIndex == 1;
+        var labelFs = FieldCaptionFontSize(10);
 
-        return new List<PrintBlock>
+        var blocks = new List<PrintBlock>
         {
             new()
             {
                 Name = "Block 1", X = 2, Y = 4, Width = 25, Height = 15, ShowBorder = true,
-                Text = new TextElement { Content = T["Supplier"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Supplier", "Supplier"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2180,7 +2777,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 4", X = 2, Y = 19, Width = 25, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = T["Order&Row"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Order&Row", "Order&row"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2195,7 +2792,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 7", X = 2, Y = 30, Width = 25, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = T["SaleNo&Row"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("SaleNo&Row", "SaleNo.&row"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2210,7 +2807,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 10", X = 2, Y = 41, Width = 25, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = T["Material"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Material", "Material"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2220,12 +2817,12 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 12", X = 50, Y = 41, Width = 23, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = batchNo, FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = GetBatchForDisplay(), FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
                 Name = "Block 13", X = 2, Y = 52, Width = 25, Height = 18, ShowBorder = true,
-                Text = new TextElement { Content = T["MaterialDes."], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("MaterialDes.", "Material Des."), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2235,7 +2832,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 15", X = 2, Y = 70, Width = 25, Height = 18, ShowBorder = true,
-                Text = new TextElement { Content = T["Model"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Model", "Model"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2245,7 +2842,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 17", X = 2, Y = 88, Width = 25, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = T["Quantity"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "left", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("Quantity", "Quantity"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "left", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2255,7 +2852,7 @@ public partial class MaterialLabel
             new()
             {
                 Name = "Block 19", X = 47, Y = 88, Width = 33, Height = 11, ShowBorder = true,
-                Text = new TextElement { Content = T["TotalQuantity"], FontName = "Arial", FontSize = 10, Bold = bold, Align = "center", VerticalAlign = "middle" }
+                Text = new TextElement { Content = FieldCaption("TotalQuantity", "TotalQuantity"), FontName = "Arial", FontSize = labelFs, Bold = bold, Align = "center", VerticalAlign = "middle" }
             },
             new()
             {
@@ -2292,13 +2889,33 @@ public partial class MaterialLabel
                 Name = "Block 26", X = 27, Y = 99, Width = 71, Height = 11, ShowBorder = true
             }
         };
+
+        // 采购收货 100×120：物料格右侧 ZEIVR（对齐 WinForm）
+        if (isPurchaseTab)
+        {
+            blocks.Add(new PrintBlock
+            {
+                Name = "Block 11 ZEIVR", X = 27, Y = 41, Width = 23, Height = 11, ShowBorder = false,
+                Text = new TextElement
+                {
+                    Content = printModel!.ZEIVR ?? string.Empty,
+                    FontName = "Arial",
+                    FontSize = 10,
+                    Bold = bold,
+                    Align = "right",
+                    VerticalAlign = "middle"
+                }
+            });
+        }
+
+        return blocks;
     }
 
     List<PrintBlock> BuildTabPrint100x80(int tabIndex) =>
         BuildStandardPrint100x80(BuildOrderLineNo100x80(tabIndex), tabIndex, bold: false);
 
     List<PrintBlock> BuildTabPrint100x120(int tabIndex) =>
-        BuildStandardPrint100x120(BuildOrderLineNo100x120(tabIndex), bold: true);
+        BuildStandardPrint100x120(BuildOrderLineNo100x120(tabIndex), tabIndex, bold: true);
 
     void ApplyBatchNoForTab(int tabIndex)
     {
@@ -2306,6 +2923,8 @@ public partial class MaterialLabel
         if (!string.IsNullOrWhiteSpace(PO_NO))
         {
             batchNo = PO_NO.Trim();
+            if (batchNo.Length > 10)
+                batchNo = batchNo[..10];
             return;
         }
 
@@ -2350,6 +2969,10 @@ public partial class MaterialLabel
 
         if (model.batchRule == "4")
             batchNo = LSP ?? string.Empty;
+
+        // 对齐 WinForm：批次最长 10 位
+        if (!string.IsNullOrEmpty(batchNo) && batchNo.Length > 10)
+            batchNo = batchNo[..10];
     }
 
     async Task<bool> GeneratePrintDataCoreAsync(int tabIndex)
@@ -2395,6 +3018,7 @@ public partial class MaterialLabel
 
         _currentTray = "1";
         _totalTray = PrintCount.Trim();
+        _currentLabelUniqueCodeV2 = string.Empty;
 
         if (printModel.SalesOrderNo == null)
         {
@@ -2427,16 +3051,41 @@ public partial class MaterialLabel
         printModel.boxQuantity = BoxNum;
         printModel.amountQuantity = SumNum;
         printModel.amountQuantity_real = SumNum;
-        printModel.HUValue = await GetHUAsync(printModel.factory, Guid.NewGuid().ToString("N"));
-        printModel.QRcodeValue = printModel.orderNo + "/" + printModel.orderLineNo + "/" + printModel.materialCode + "/" +
-                                 printModel.amountQuantity + "/" + printModel.amountQuantity_real + "/" +
-                                 printModel.HUValue + "/" + printModel.SalesOrderNo + "/" + printModel.SalesOrderNolineNO;
 
         ApplyBatchNoForTab(tabIndex);
 
-        QrValue = !string.IsNullOrEmpty(batchNo)
-            ? printModel.QRcodeValue + "/BATCH/" + batchNo
-            : printModel.QRcodeValue;
+        var hideBatch = ShouldHideBatchForPrint();
+        try
+        {
+            if (UseProductInboundQrV2())
+            {
+                // V2：不调 GetHU，唯一码进二维码
+                printModel.HUValue = string.Empty;
+                printModel.QRcodeValue = string.Empty;
+                QrValue = await BuildProductInboundQrValueV2FromModelAsync(batchNo, hideBatch);
+            }
+            else
+            {
+                printModel.HUValue = await GetHUAsync(printModel.factory, Guid.NewGuid().ToString("N"));
+                printModel.QRcodeValue = printModel.orderNo + "/" + printModel.orderLineNo + "/" + printModel.materialCode + "/" +
+                                         printModel.amountQuantity + "/" + printModel.amountQuantity_real + "/" +
+                                         printModel.HUValue + "/" + printModel.SalesOrderNo + "/" + printModel.SalesOrderNolineNO;
+
+                // 对齐 WinForm BuildLabelQrValue：无批次时仍带 /BATCH/ 后缀、值为空
+                if (hideBatch)
+                    QrValue = printModel.QRcodeValue + "/BATCH/";
+                else if (!string.IsNullOrEmpty(batchNo))
+                    QrValue = printModel.QRcodeValue + "/BATCH/" + batchNo;
+                else
+                    QrValue = printModel.QRcodeValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            SnackbarHelper.Show("生成二维码失败：" + ex.Message, Severity.Error);
+            AppendLog("生成二维码失败：" + ex.Message);
+            return false;
+        }
 
         IsGenerating = true;
         try
@@ -2467,8 +3116,61 @@ public partial class MaterialLabel
 
     #region Tab1 采购收货 — 打印 Blocks
 
-    List<PrintBlock> Purchase_Print60x40() => Production_Print60x40();
-    List<PrintBlock> Purchase_Print80x60() => Production_Print80x60();
+    /// <summary>采购 60×40：行号格=orderLineNo，物料格右 ZEIVR（对齐 WinForm，不再复用生产版）。</summary>
+    List<PrintBlock> Purchase_Print60x40()
+    {
+        var blocks = Production_Print60x40();
+        foreach (var b in blocks)
+        {
+            if (b.Name == "Block 6" && b.Text is not null)
+                b.Text.Content = printModel!.orderLineNo;
+            if (b.Name == "Block 15" && b.Text is not null)
+                b.Text.Content = FormatSmallLabelQuantityPcsText();
+        }
+
+        blocks.Add(new PrintBlock
+        {
+            Name = "Block 8 ZEIVR", X = 14, Y = 13, Width = 14, Height = 5, ShowBorder = false,
+            Text = new TextElement
+            {
+                Content = printModel!.ZEIVR ?? string.Empty,
+                FontName = "Arial",
+                FontSize = 6,
+                Bold = false,
+                Align = "right",
+                VerticalAlign = "middle"
+            }
+        });
+        return blocks;
+    }
+
+    /// <summary>采购 80×60：行号格=orderLineNo，物料格右 ZEIVR。</summary>
+    List<PrintBlock> Purchase_Print80x60()
+    {
+        var blocks = Production_Print80x60();
+        foreach (var b in blocks)
+        {
+            if (b.Name == "factory" && b.Text is not null)
+                b.Text.Content = printModel!.orderLineNo;
+            if (b.Name == "PCS" && b.Text is not null)
+                b.Text.Content = FormatSmallLabelQuantityPcsText();
+        }
+
+        blocks.Add(new PrintBlock
+        {
+            Name = "materialCode ZEIVR", X = 18, Y = 16, Width = 20, Height = 7, ShowBorder = false,
+            Text = new TextElement
+            {
+                Content = printModel!.ZEIVR ?? string.Empty,
+                FontSize = 8f,
+                Bold = true,
+                Align = "right",
+                VerticalAlign = "center"
+            }
+        });
+        return blocks;
+    }
+
     List<PrintBlock> Purchase_Print100x80() => BuildTabPrint100x80(1);
     List<PrintBlock> Purchase_Print100x120() => BuildTabPrint100x120(1);
 
@@ -2527,86 +3229,111 @@ public partial class MaterialLabel
 
     #region 称重 — WebSerial
 
-    async Task LoadMalaysiaSettingsAsync()
+    /// <summary>配置默认马来模式：仅当特殊打印仍为「无」时套用 appsettings。</summary>
+    void ApplyMalaysiaConfigDefault()
     {
-        try
-        {
-            var storedMas = await JS.InvokeAsync<string?>("localStorage.getItem", MalaysiaStorageKey);
-            if (bool.TryParse(storedMas, out var mas))
-                PrintIsMalaysia = mas;
-            else
-                PrintIsMalaysia = string.Equals(Config["is_malaysia"], "true", StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(SpecialPrint, "无", StringComparison.Ordinal))
+            return;
 
-            var storedMas2 = await JS.InvokeAsync<string?>("localStorage.getItem", Malaysia2StorageKey);
-            if (bool.TryParse(storedMas2, out var mas2))
-                PrintIsMalaysia2 = mas2;
-            else
-                PrintIsMalaysia2 = string.Equals(Config["is_malaysia2"], "true", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            PrintIsMalaysia = string.Equals(Config["is_malaysia"], "true", StringComparison.OrdinalIgnoreCase);
-            PrintIsMalaysia2 = string.Equals(Config["is_malaysia2"], "true", StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (PrintIsMalaysia && PrintIsMalaysia2)
-            PrintIsMalaysia = false;
+        if (string.Equals(Config["is_malaysia2"], "true", StringComparison.OrdinalIgnoreCase))
+            SpecialPrint = "电子料纸箱";
+        else if (string.Equals(Config["is_malaysia"], "true", StringComparison.OrdinalIgnoreCase))
+            SpecialPrint = "马来专属";
 
         if ((PrintIsMalaysia || PrintIsMalaysia2) && PaperSize is not "100*80")
             PaperSize = "100*80";
     }
 
-    async Task SaveMalaysiaSettingsAsync()
+    /// <summary>对齐 WinForm purchaseFunction：控制可见 Tab。</summary>
+    void ApplyPurchaseFunctionConfig()
     {
-        try
+        // 独立「生产入库」页面：始终只保留生产 Tab，不受 purchaseFunction 影响
+        if (IsProductionOnlyPage)
         {
-            await JS.InvokeVoidAsync(
-                "localStorage.setItem",
-                MalaysiaStorageKey,
-                PrintIsMalaysia ? "true" : "false");
-            await JS.InvokeVoidAsync(
-                "localStorage.setItem",
-                Malaysia2StorageKey,
-                PrintIsMalaysia2 ? "true" : "false");
+            VisibleLogicalTabs = [0];
+            activeTabIndex = 0;
+            return;
         }
-        catch
+
+        var code = Config["purchaseFunction"]?.Trim() ?? string.Empty;
+        switch (code)
         {
-            // ignore
+            case "4c58a367cec14362a0bee1da5dedd57a":
+                // 仅生产
+                VisibleLogicalTabs = [0];
+                break;
+            case "26c95b3ddb2347f0ab9bd8735a7554be":
+            case "":
+                // 全部（空配置时 Web 默认全开，避免误藏）
+                VisibleLogicalTabs = [0, 1, 2, 3, 4];
+                break;
+            default:
+                // 仅采购（与 WinForm default 分支一致），并关闭备注数量
+                VisibleLogicalTabs = [1];
+                if_remark = false;
+                break;
         }
+
+        if (activeTabIndex >= VisibleLogicalTabs.Count)
+            activeTabIndex = 0;
     }
 
-    async Task OnPrintIsMalaysiaChangedAsync()
+    /// <summary>对齐 WinForm autoRemarkOrder：false 时默认不勾选备注数量。</summary>
+    void ApplyAutoRemarkOrderConfig()
     {
-        if (PrintIsMalaysia)
-        {
-            PrintIsMalaysia2 = false;
-            PaperSize = "100*80";
-        }
-
-        await SaveMalaysiaSettingsAsync();
-        await SavePrintSettingsAsync();
+        if (string.Equals(Config["autoRemarkOrder"], "false", StringComparison.OrdinalIgnoreCase))
+            if_remark = false;
     }
 
-    async Task OnPrintIsMalaysia2ChangedAsync()
+    async Task OpenBomDialogAsync()
     {
-        if (PrintIsMalaysia2)
+        var orderNo = ProdOrderNo?.Trim();
+        if (string.IsNullOrEmpty(orderNo) && printModel is not null)
+            orderNo = printModel.orderNo;
+
+        if (string.IsNullOrWhiteSpace(orderNo))
         {
-            PrintIsMalaysia = false;
-            PaperSize = "100*80";
+            SnackbarHelper.Show("请先输入生产订单号", Severity.Warning);
+            return;
         }
 
-        await SaveMalaysiaSettingsAsync();
+        var parameters = new DialogParameters
+        {
+            [nameof(ProductionBomDialog.ProductionOrderNo)] = orderNo
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraLarge,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+        await DialogService.ShowAsync<ProductionBomDialog>("生产订单 BOM", parameters, options);
+    }
+
+    async Task OpenReportDialogAsync()
+    {
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraLarge,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+        await DialogService.ShowAsync<ProductionReportDialog>("报工", options);
+    }
+
+    async Task OnSpecialPrintChangedAsync()
+    {
+        if (PrintIsMalaysia || PrintIsMalaysia2)
+            PaperSize = "100*80";
+
         await SavePrintSettingsAsync();
     }
 
     async Task OnPaperSizeChangedAsync()
     {
+        // 马来专属/电子料纸箱仅支持 100×80；改其它纸张时退回「无」
         if (PaperSize is not "100*80" && (PrintIsMalaysia || PrintIsMalaysia2))
-        {
-            PrintIsMalaysia = false;
-            PrintIsMalaysia2 = false;
-            await SaveMalaysiaSettingsAsync();
-        }
+            SpecialPrint = "无";
 
         await SavePrintSettingsAsync();
     }
@@ -2798,14 +3525,9 @@ public partial class MaterialLabel
 
     void ApplyPrintSettings(MaterialLabelPrintSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.SelectedPrinter) && Printers.Contains(settings.SelectedPrinter))
+        // 打印机列表可能尚未拉取：先记下偏好，列表回来后再校验
+        if (!string.IsNullOrWhiteSpace(settings.SelectedPrinter))
             SelectedPrinter = settings.SelectedPrinter;
-        else if (string.IsNullOrWhiteSpace(SelectedPrinter))
-        {
-            SelectedPrinter = !string.IsNullOrWhiteSpace(DefaultPrinter) && Printers.Contains(DefaultPrinter)
-                ? DefaultPrinter
-                : Printers.FirstOrDefault();
-        }
 
         if (IsValidPaperSize(settings.PaperSize))
             PaperSize = settings.PaperSize;
@@ -2816,10 +3538,29 @@ public partial class MaterialLabel
         if_rotate = settings.if_rotate;
         if_qualify = settings.if_qualify;
         if_remark = settings.if_remark;
+        HideBatch = settings.HideBatch;
+    }
+
+    void ApplyPrinterLoadResult(PrinterLoadResult result)
+    {
+        if (!result.Success)
+            return;
+
+        Printers = result.Printers.ToList();
+        DefaultPrinter = result.DefaultPrinter;
+
+        // 优先沿用本页已保存的默认打印机；不在列表中则用代理解析结果
+        if (!string.IsNullOrWhiteSpace(SelectedPrinter) && Printers.Contains(SelectedPrinter))
+            return;
+
+        SelectedPrinter = result.SelectedPrinter
+                         ?? (!string.IsNullOrWhiteSpace(DefaultPrinter) && Printers.Contains(DefaultPrinter)
+                             ? DefaultPrinter
+                             : Printers.FirstOrDefault());
     }
 
     static bool IsValidPaperSize(string? value) =>
-        value is "60*40" or "80*60" or "100*80" or "100*120";
+        value is "60*40" or "80*60" or "100*80" or "100*120" or "297*210";
 
     static bool IsValidSpecialPrint(string? value) =>
         value is "无" or "双语打印" or "马来专属" or "电子料纸箱";
@@ -2835,7 +3576,8 @@ public partial class MaterialLabel
                 SpecialPrint = SpecialPrint,
                 if_rotate = if_rotate,
                 if_qualify = if_qualify,
-                if_remark = if_remark
+                if_remark = if_remark,
+                HideBatch = HideBatch
             };
 
             await JS.InvokeVoidAsync(
@@ -2856,11 +3598,7 @@ public partial class MaterialLabel
         await PrinterBootstrap.TryLoadOnFirstRenderAsync(
             firstRender,
             LegacyPrinterStorageKey,
-            result =>
-            {
-                if (!result.Success) return;
-                Printers = result.Printers.ToList();
-            },
+            ApplyPrinterLoadResult,
             () => InvokeAsync(StateHasChanged));
 
         if (firstRender)
