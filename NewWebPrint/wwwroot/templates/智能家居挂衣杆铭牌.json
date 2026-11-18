@@ -1,0 +1,63 @@
+{
+  "PrinterName": "TSC TTP-244 Pro",
+  "PaperWidthMm": 55,
+  "PaperHeightMm": 40,
+  "Copies": 1,
+  "StartValue": 1,
+  "PrintCount": 1,
+  "BorderThicknessMm": 0.2,
+  "Blocks": [
+    {
+      "Name": "title",
+      "X": 4,
+      "Y": 5,
+      "Width": 49,
+      "Height": 7,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "TYPE:RIGHT BODY\n",
+        "FontName": "Arial",
+        "FontSize": 13,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "material_des",
+      "X": 4,
+      "Y": 13,
+      "Width": 49,
+      "Height": 12,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "JC35HB1-1-0D3-10-\n29-1-SSP-HG-CG-B2-1\n",
+        "FontName": "Arial",
+        "FontSize": 12,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "serialnum",
+      "X": 4,
+      "Y": 26,
+      "Width": 49,
+      "Height": 6,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "18057428-251230-00051",
+        "FontName": "Arial",
+        "FontSize": 11,
+        "Bold": false,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    }
+  ],
+  "IsRotate": false
+}

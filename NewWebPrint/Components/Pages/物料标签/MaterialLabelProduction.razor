@@ -1,0 +1,299 @@
+@page "/MaterialLabelProduction"
+@using System.Data
+@using System.Globalization
+@using NewWebPrint.Models.Api
+@using Newtonsoft.Json.Linq
+@using NewWebPrint.Services.SapEwm
+@using Sap.Data.Hana
+@rendermode InteractiveServer
+@using MudBlazor.Services
+@implements IAsyncDisposable
+@inject SnackbarHelper SnackbarHelper
+
+<MudPaper Class="pa-2 d-flex flex-column flex-grow-1">
+    <MudTabs @ref="tabsRef"
+             @bind-ActivePanelIndex="activeTabIndex"
+             Class="d-flex" Elevation="2" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4" Style="width: 100%">
+        <MudTabPanel Text="生产入库" class="pa-2">
+            <MudGrid Spacing="@DynamicSpacing" AlignItems="AlignItems.Center">
+                <MudItem xs="12" md="5">
+                    <KeypadTarget Label="生产订单号/扫码" @bind-Value="ProdOrderNo"
+                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <KeypadTarget Label="工号" @bind-Value="UserId"
+                                  Variant="Variant.Outlined" Margin="@DynamicMargin"
+                                  Dense="@(DynamicMargin == Margin.Dense)"/>
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="AutoFont"
+                               Style="width: 100%; height: 100%; min-height: 40px;"
+                               OnClick="SearchSubmit"
+                               Disabled="@(IsSearching || string.IsNullOrWhiteSpace(UserId))"
+                               FullWidth="true">
+                        @(IsSearching ? "查询中..." : "查询")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+    </MudTabs>
+    <MudPaper Class="my-1 d-flex flex-column pa-2" Style="min-height:100px" Elevation="2">
+        @if (IsSearching)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-1"/>
+        }
+        <div class="table-scroll-x flex-grow-1">
+            <MudTable Items="@printModelList"
+                      T="EWMLabelModel"
+                      Hover="true"
+                      FixedHeader="true"
+                      Height="120px"
+                      Breakpoint="Breakpoint.Sm"
+                      LoadingProgressColor="Color.Info"
+                      RowClassFunc="GetTableRowClass"
+                      OnRowClick="OnRowClicked">
+                <HeaderContent>
+                    <MudTh>工厂</MudTh>
+                    <MudTh>车间</MudTh>
+                    <MudTh>订单</MudTh>
+                    <MudTh>订单行</MudTh>
+                    <MudTh>订单交期</MudTh>
+                    <MudTh>物料编码</MudTh>
+                    <MudTh>物料组</MudTh>
+                    <MudTh>物料名称</MudTh>
+                    <MudTh>规格型号</MudTh>
+                    <MudTh>订单数量</MudTh>
+                    <MudTh>未报工数</MudTh>
+                    <MudTh>销售订单号</MudTh>
+                    <MudTh>销售订单行号</MudTh>
+                    <MudTh>库存数量</MudTh>
+                    <MudTh>批次</MudTh>
+                    <MudTh>库位</MudTh>
+                    <MudTh>交货日期</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="工厂">@context.factory</MudTd>
+                    <MudTd DataLabel="车间">@context.supplier</MudTd>
+                    <MudTd DataLabel="订单">@context.orderNo</MudTd>
+                    <MudTd DataLabel="订单行">@context.orderLineNo</MudTd>
+                    <MudTd DataLabel="订单交期">@context.OrderDelivery</MudTd>
+                    <MudTd DataLabel="物料编码">@context.materialCode</MudTd>
+                    <MudTd DataLabel="物料组">@context.materialGroup</MudTd>
+                    <MudTd DataLabel="物料名称">@context.materialName</MudTd>
+                    <MudTd DataLabel="规格型号">@context.materialModel_zh</MudTd>
+                    <MudTd DataLabel="订单数量">@context.orderQuantity</MudTd>
+                    <MudTd DataLabel="未报工数">
+                        @(Convert.ToDouble(context.orderQuantity) - Convert.ToDouble(context.reportNum))
+                    </MudTd>
+                    <MudTd DataLabel="销售订单号">@context.SalesOrderNo</MudTd>
+                    <MudTd DataLabel="销售订单行号">@context.SalesOrderNolineNO</MudTd>
+                    <MudTd DataLabel="库存数量">@context.rknum</MudTd>
+                    <MudTd DataLabel="批次">@context.client</MudTd>
+                    <MudTd DataLabel="库位">@context.var2</MudTd>
+                    <MudTd DataLabel="交货日期">@context.DGLTP</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Typo="Typo.subtitle2" Align="Align.Center" Color="Color.Secondary">
+                        暂无数据
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+    </MudPaper>
+    <MudPaper Class="my-1 d-flex" Elevation="0" Style="background-color: transparent">
+        <MudGrid Spacing="@DynamicSpacing" AlignItems="AlignItems.Stretch">
+            <MudItem xs="12" sm="3" Class="d-flex">
+                <OperationLog Content="@PrintMessages" Title="操作日志" HeightPx="280" Class="w-100"/>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="order-xs-first">
+                <MudPaper Style="width: 100%; height: 100%; min-height: 100px;" Elevation="2" Class="pa-2">
+                    <MudGrid Spacing="@DynamicSpacing">
+                        <MudItem sm="12" Class="d-flex flex-column justify-center">
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Style="width: 100%">
+                                    <MudSelect T="string"
+                                               Label="默认打印机"
+                                               @bind-Value="SelectedPrinter"
+                                               @bind-Value:after="SavePrintSettingsAsync"
+                                               Variant="Variant.Outlined"
+                                               Margin="Margin.Dense"
+                                               Adornment="Adornment.Start"
+                                               AdornmentIcon="@Icons.Material.Filled.Print"
+                                               Class="flex-grow-1"
+                                               Placeholder="请选择默认打印机">
+                                        @foreach (var p in Printers)
+                                        {
+                                            <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudStack>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem sm="12">
+                            <MudStack Spacing="1">
+                                <MudGrid >
+                                    <MudItem xs="12" sm="9" Class="d-flex justify-start flex-wrap">
+                                        <MudCheckBox @bind-Value="if_rotate" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="旋转90°"/>
+                                        <MudCheckBox @bind-Value="if_qualify" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="默认合格"/>
+                                        <MudCheckBox @bind-Value="if_remark" @bind-Value:after="SavePrintSettingsAsync"
+                                                     Label="备注数量"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="3">
+                                        <KeypadTarget @bind-Value="PO_NO" Label="自定义批次号"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"/>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem sm="12">
+                            <MudGrid Spacing="@DynamicSpacing">
+                                <MudItem xs="6" sm="6">
+                                    <MudTextField Value="@BoxNum" Label="箱数(满箱)" Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Disabled="@true"/>
+                                </MudItem>
+                                <MudItem xs="6" sm="6">
+                                    <MudTextField Value="@(FullBoxQty > 0 ? FullBoxQty.ToString() : "-")"
+                                                  Label="满箱数量" Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Disabled="@true"/>
+                                </MudItem>
+                            </MudGrid>
+                        </MudItem>
+                    </MudGrid>
+                   
+                    <MudHidden Breakpoint="Breakpoint.Xs">
+                        <MudDivider DividerType="DividerType.FullWidth" Class="my-3"/>
+                        <MudGrid Spacing="@DynamicSpacing">
+                            <MudItem xs="6" sm="3" Class="d-flex align-center">
+                                <MudButton FullWidth="true"
+                                           Variant="Variant.Filled"
+                                           Color="@(_isSerialOpen ? Color.Warning : Color.Tertiary)"
+                                           Disabled="@(!_isSerialOpen && !CanUseWeightControls)"
+                                           OnClick="EnableWeight">
+                                    @(_isSerialOpen ? "断开" : "连接")
+                                </MudButton>
+                            </MudItem>
+                            <MudItem xs="6" sm="3">
+                                <KeypadTarget @bind-Value="WeightStandard"
+                                              @bind-Value:after="SaveWeightSettingsAsync"
+                                              Label="标重" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true"
+                                              Disabled="@(!CanUseWeightControls)"/>
+                            </MudItem>
+                            <MudItem xs="6" sm="3">
+                                <KeypadTarget @bind-Value="WeightMeasured" Label="称重" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true" Disabled="true"/>
+                            </MudItem>
+                            <MudItem xs="6" sm="3">
+                                <KeypadTarget @bind-Value="WeightTolerance"
+                                              @bind-Value:after="SaveWeightSettingsAsync"
+                                              Label="公差" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Dense="true"
+                                              Disabled="@(!CanUseWeightControls)"/>
+                            </MudItem>
+                        </MudGrid>
+                    </MudHidden>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="3" Class="d-none d-sm-flex num-keypad-item">
+                <MudPaper Elevation="2" Class="pa-2 num-keypad-panel d-flex flex-column">
+                    <MudStack Spacing="2" Class="flex-grow-1">
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">扫码出标</MudText>
+                        <MudText Typo="Typo.body2" Color="@(FullBoxQty > 0 ? Color.Primary : Color.Secondary)">
+                            @FullBoxProgressText
+                        </MudText>
+                        <MudTextField @bind-Value="ScanBarcodeInput"
+                                      Label="扫码枪输入"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="@true"
+                                      Autofocus="@true"
+                                      Disabled="@(IsPrinting || printModel is null || FullBoxQty <= 0)"
+                                      OnKeyDown="OnScanBarcodeKeyDown"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.QrCodeScanner"
+                                      HelperText="例：1H1031137160001（15位，先DMP老化再计数）"/>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            扫码先查DMP老化并存库，PASS后才计数；满箱自动打印，不可手动补打
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+        </MudGrid>
+    </MudPaper>
+</MudPaper>
+
+<style>
+    .AutoFont {
+        font-size: clamp(1rem, 2vw + 0.5rem, 1.5rem) !important;
+        font-weight: bold !important;
+    }
+
+    @@media (max-width: 599px) {
+        .order-xs-first {
+            order: -1 !important;
+        }
+    }
+
+    .table-scroll-x {
+        overflow-x: auto;
+        width: 100%;
+    }
+
+    .table-scroll-x .mud-table {
+        width: max-content;
+        min-width: 100%;
+    }
+
+    .table-scroll-x .mud-table thead th {
+        white-space: nowrap;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        font-weight: 600;
+    }
+
+    .table-scroll-x .mud-table tbody td {
+        white-space: normal;
+        word-break: break-all;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .table-scroll-x .mud-table tbody tr {
+        cursor: pointer;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row {
+        background-color: #d9d9d9 !important;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row:hover {
+        background-color: #cfcfcf !important;
+    }
+
+    .table-scroll-x .mud-table tbody tr.material2-selected-row td {
+        color: rgba(0, 0, 0, 0.87);
+    }
+
+    .num-keypad-item {
+        min-height: 260px;
+    }
+
+    .num-keypad-panel {
+        width: 100%;
+        height: 100%;
+        min-height: 200px;
+    }
+
+    .num-keypad-host {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 0;
+        display: flex;
+    }
+</style>

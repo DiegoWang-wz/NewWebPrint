@@ -1,0 +1,228 @@
+@page "/LabelPrintForNameplate"
+@rendermode InteractiveServer
+@inject SnackbarHelper SnackbarHelper
+@inject LocalAgentPrinterBootstrap PrinterBootstrap
+@inject ISapEwmService SapEwmService
+
+<div class="nameplate-page pa-3">
+    <MudPaper Outlined="true" Class="pa-3 mb-3">
+        <MudText Typo="Typo.subtitle1" Class="mb-2" Style="font-weight:600;">智能家居 · 挂衣杆铭牌</MudText>
+        <MudGrid Spacing="2" AlignItems="AlignItems.Center">
+            <MudItem xs="12" md="4">
+                <MudTextField T="string"
+                              Label="请输入生产订单号"
+                              @bind-Value="ProductionOrder"
+                              Margin="Margin.Dense"
+                              Variant="Variant.Outlined"
+                              OnKeyUp="OnSearchKeyUp"/>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField T="string"
+                              Label="请输入销售/发货订单号"
+                              @bind-Value="DeliveryOrSalesOrderNo"
+                              Margin="Margin.Dense"
+                              Variant="Variant.Outlined"
+                              OnKeyUp="OnSearchKeyUp"/>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="SearchSubmitAsync"
+                           Disabled="@IsSearching"
+                           FullWidth="true"
+                           Style="height:40px; font-weight:600;">
+                    @(IsSearching ? "查询中…" : "查询")
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (IsSearching)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mt-2"/>
+        }
+
+        <div class="table-scroll-x mt-2">
+            <MudTable Items="@_tableRows"
+                      T="SapEwmDynamicPayload"
+                      Dense="true"
+                      Hover="true"
+                      Breakpoint="Breakpoint.None"
+                      OnRowClick="OnTableRowClick"
+                      RowClassFunc="GetSelectedRowClass"
+                      Class="order-detail-table nameplate-table">
+                <HeaderContent>
+                    <MudTh Style="white-space:nowrap;">车间</MudTh>
+                    <MudTh Style="white-space:nowrap;">客户</MudTh>
+                    <MudTh Style="white-space:nowrap;">客户编码</MudTh>
+                    <MudTh Style="white-space:nowrap;">生产订单</MudTh>
+                    <MudTh Style="white-space:nowrap;">销售订单</MudTh>
+                    <MudTh Style="white-space:nowrap;">物料代码</MudTh>
+                    <MudTh Style="white-space:nowrap;">物料名称</MudTh>
+                    <MudTh Style="white-space:nowrap;">规格型号</MudTh>
+                    <MudTh Style="white-space:nowrap;">订单数量</MudTh>
+                    <MudTh Style="white-space:nowrap;">侧唛是否带JCLOGO</MudTh>
+                    <MudTh Style="white-space:nowrap;">客户物料标识</MudTh>
+                    <MudTh Style="white-space:nowrap;">客户物料名称</MudTh>
+                    <MudTh Style="white-space:nowrap;">客户PO</MudTh>
+                    <MudTh Style="white-space:nowrap;">中文标识</MudTh>
+                    <MudTh Style="white-space:nowrap;">VBBP-ZI10</MudTh>
+                    <MudTh Style="white-space:nowrap;">生产要求备注</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("plant")">@context.GetString("plant")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("customerName")">@context.GetString("customerName")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("customerCode")">@context.GetString("customerCode")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("orderNo")">@context.GetString("orderNo")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("SalesOrderNo")">@context.GetString("SalesOrderNo")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("materialCode")">@context.GetString("materialCode")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("materialName")">@context.GetString("materialName")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("materialModel_zh")">@context.GetString("materialModel_zh")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("orderQuantity")">@context.GetString("orderQuantity")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("jclogoText", "HaveJiecangLOGO")">@context.GetString("jclogoText", "HaveJiecangLOGO")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("materialCodebyClient")">@context.GetString("materialCodebyClient")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("materialNamebyClient")">@context.GetString("materialNamebyClient")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("ZOGEN", "ZCPON")">@context.GetString("ZOGEN", "ZCPON")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("ZMTYPE", "中文标识")">@context.GetString("ZMTYPE", "中文标识")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("ZI10", "STTXT")">@context.GetString("ZI10", "STTXT")</span></MudTd>
+                    <MudTd><span class="cell-clamp" title="@context.GetString("ZI01")">@context.GetString("ZI01")</span></MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Typo="Typo.body2" Color="Color.Secondary" Class="pa-2">
+                        暂无数据
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+    </MudPaper>
+
+    <MudGrid Spacing="2">
+        <MudItem xs="12" md="4">
+            <MudPaper Outlined="true" Class="pa-2 h-100">
+                <OperationLog Content="@LogMessages" Title="操作日志" HeightPx="260"/>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Outlined="true" Class="pa-3">
+                <MudText Typo="Typo.subtitle2" Class="mb-3" Style="font-weight:600;">
+                    挂衣杆铭牌打印（55×40，每套 LEFT + RIGHT）
+                </MudText>
+
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string"
+                                   Label="打印机"
+                                   @bind-Value="SelectedPrinter"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Print"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   FullWidth="true">
+                            @foreach (var p in Printers)
+                            {
+                                <MudSelectItem T="string" Value="@p">@p</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker Label="生产日期"
+                                       Editable="true"
+                                       @bind-Date="ProductionDate"
+                                       DateFormat="yyyy-MM-dd"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Class="w-100"/>
+                    </MudItem>
+                    <MudItem xs="6" sm="4">
+                        <MudNumericField @bind-Value="SerialStart"
+                                         Label="流水号起始"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense"
+                                         Min="1"
+                                         FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="6" sm="4">
+                        <MudNumericField @bind-Value="PrintPairs"
+                                         Label="套数（每套 L+R）"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense"
+                                         Min="1"
+                                         Max="500"
+                                         FullWidth="true"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   FullWidth="true"
+                                   Style="height:40px; font-weight:600;"
+                                   OnClick="PrintHangRailNameplateAsync"
+                                   Disabled="@(IsPrinting || _data == null)">
+                            @(IsPrinting ? "打印中…" : "打印")
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+
+                <MudPaper Class="pa-2 mt-3 preview-box" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">标签预览（首套）</MudText>
+                    <MudText Typo="Typo.body2" Class="font-monospace">TYPE:RIGHT BODY / TYPE:LEFT BODY</MudText>
+                    <MudText Typo="Typo.body2" Class="font-monospace">@PreviewMaterialLine</MudText>
+                    <MudText Typo="Typo.body2" Class="font-monospace">@PreviewSerialLine</MudText>
+                </MudPaper>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<style>
+    .nameplate-page {
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+    }
+
+    .table-scroll-x {
+        width: 100%;
+        overflow-x: auto;
+        max-height: 280px;
+        overflow-y: auto;
+    }
+
+    .nameplate-table {
+        width: max-content;
+        min-width: 100%;
+        table-layout: auto;
+    }
+
+    .nameplate-table .mud-table-head th,
+    .nameplate-table th {
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+    }
+
+    .nameplate-table .mud-table-cell,
+    .nameplate-table td {
+        white-space: nowrap;
+    }
+
+    .cell-clamp {
+        display: inline-block;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+
+    .nameplate-selected-row {
+        background-color: rgba(103, 58, 183, 0.12) !important;
+    }
+
+    .font-monospace {
+        font-family: Consolas, "Courier New", monospace;
+    }
+
+    .preview-box {
+        background: #fafafa;
+    }
+</style>

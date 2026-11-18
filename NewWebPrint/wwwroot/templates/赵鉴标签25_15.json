@@ -1,0 +1,63 @@
+{
+  "PrinterName": "TSC TTP-244 Pro",
+  "PaperWidthMm": 25,
+  "PaperHeightMm": 15,
+  "Copies": 1,
+  "StartValue": 1,
+  "PrintCount": 3,
+  "BorderThicknessMm": 0.2,
+  "Blocks": [
+    {
+      "Name": "物料名称",
+      "X": 1,
+      "Y": 1.5,
+      "Width": 23,
+      "Height": 6.5,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "Type:JCH35S1-2-b-0-5E-1d5-01",
+        "FontName": "Arial",
+        "FontSize": 6,
+        "Bold": true,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "物料号",
+      "X": 1,
+      "Y": 8,
+      "Width": 23,
+      "Height": 3,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "O.C: 11843589",
+        "FontName": "Arial",
+        "FontSize": 6,
+        "Bold": true,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    },
+    {
+      "Name": "流水号",
+      "X": 1,
+      "Y": 11,
+      "Width": 23,
+      "Height": 3,
+      "ShowBorder": false,
+      "Text": {
+        "Content": "M.D:20260520-00164",
+        "FontName": "Arial",
+        "FontSize": 6,
+        "Bold": true,
+        "Align": "left",
+        "VerticalAlign": "middle",
+        "AutoFit": false
+      }
+    }
+  ],
+  "IsRotate": false
+}

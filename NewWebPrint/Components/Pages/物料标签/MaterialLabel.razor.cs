@@ -48,7 +48,7 @@ public partial class MaterialLabel
     private bool IsGenerating;
     private MudTabs? tabsRef;
     private int activeTabIndex;
-    /// <summary>purchaseFunction 允许显示的逻辑 Tab：0生产 1采购 2物料 3销单 4交货。</summary>
+    /// <summary>由 purchaseFunction 控制可见 Tab；默认全开。</summary>
     List<int> VisibleLogicalTabs { get; set; } = [0, 1, 2, 3, 4];
     /// <summary>当前面板对应的业务 Tab 索引（对齐 WinForm SelectedTab）。</summary>
     int LogicalTab =>
@@ -56,19 +56,6 @@ public partial class MaterialLabel
             ? VisibleLogicalTabs[activeTabIndex]
             : 0;
     bool ShowLogicalTab(int logical) => VisibleLogicalTabs.Contains(logical);
-
-    /// <summary>独立页 /MaterialLabelProduction：仅生产入库。</summary>
-    bool IsProductionOnlyPage
-    {
-        get
-        {
-            var path = NavManager.ToBaseRelativePath(NavManager.Uri);
-            var q = path.IndexOf('?', StringComparison.Ordinal);
-            if (q >= 0)
-                path = path[..q];
-            return path.Equals("MaterialLabelProduction", StringComparison.OrdinalIgnoreCase);
-        }
-    }
 
     public string ProdOrderNo { get; set; } = string.Empty;
     public string ProdRemark { get; set; } = string.Empty;
@@ -120,16 +107,8 @@ public partial class MaterialLabel
     string _currentTray = string.Empty;
     string _totalTray = string.Empty;
 
-    /// <summary>两页各自独立记住打印机与打印设置。</summary>
-    string PrintSettingsStorageKey =>
-        IsProductionOnlyPage
-            ? "MaterialLabelProduction_printSettings"
-            : "MaterialLabel_printSettings";
-
-    string LegacyPrinterStorageKey =>
-        IsProductionOnlyPage
-            ? "MaterialLabelProduction_printer"
-            : "MaterialLabel_printer";
+    const string PrintSettingsStorageKey = "MaterialLabel_printSettings";
+    const string LegacyPrinterStorageKey = "MaterialLabel_printer";
 
     sealed class MaterialLabelPrintSettings
     {
@@ -151,18 +130,6 @@ public partial class MaterialLabel
         ApplyPurchaseFunctionConfig();
         ApplyAutoRemarkOrderConfig();
         ApplyMalaysiaConfigDefault();
-        ApplyProductionOnlyPrintDefaults();
-    }
-
-    /// <summary>生产入库独立页：固定 100×80 普通标签，不使用特殊打印/无批次。</summary>
-    void ApplyProductionOnlyPrintDefaults()
-    {
-        if (!IsProductionOnlyPage)
-            return;
-
-        PaperSize = "100*80";
-        SpecialPrint = "无";
-        HideBatch = false;
     }
 
     void AppendLog(string message)
@@ -184,222 +151,7 @@ public partial class MaterialLabel
         PO_NO = string.Empty;
         _customerPoNoForLabel = string.Empty;
         QrImage = null;
-        ResetFullBoxScanState(clearPrintedBoxes: true);
     }
-
-    #region 生产入库扫码满箱（仅 /MaterialLabelProduction）
-
-    /// <summary>物料编码 → 满箱数量（写死配置，可按现场增减）。</summary>
-    static readonly Dictionary<string, int> ProductionFullBoxQtyMap = new(StringComparer.Ordinal)
-    {
-        ["30117361"] = 96,
-        ["20042982"] = 54,
-        ["30170301"] = 63,
-        ["30169609"] = 72,
-        ["30172647"] = 42,
-        ["30169629"] = 54,
-        ["30172658"] = 30,
-        ["30149343"] = 30,
-    };
-
-    public string ScanBarcodeInput { get; set; } = string.Empty;
-    int FullBoxQty { get; set; }
-    int CurrentBoxScanCount { get; set; }
-    int PrintedBoxCount { get; set; }
-    /// <summary>仅扫满自动打印时置 true，禁止页面手动触发打印。</summary>
-    bool _allowProductionAutoPrint;
-    readonly HashSet<string> _scannedSerials = new(StringComparer.OrdinalIgnoreCase);
-
-    string FullBoxProgressText =>
-        FullBoxQty > 0
-            ? $"本箱 {CurrentBoxScanCount}/{FullBoxQty}　已打 {PrintedBoxCount} 箱"
-            : "未匹配满箱数量";
-
-    void ResetFullBoxScanState(bool clearPrintedBoxes)
-    {
-        ScanBarcodeInput = string.Empty;
-        FullBoxQty = 0;
-        FullBoxQtyInput = string.Empty;
-        CurrentBoxScanCount = 0;
-        _scannedSerials.Clear();
-        if (clearPrintedBoxes)
-            PrintedBoxCount = 0;
-    }
-
-    static string NormalizeMaterialCode(string? code) =>
-        PrinterHelper.ClearFrontZreo(code?.Trim());
-
-    bool TryResolveFullBoxQty(string? materialCode, out int qty)
-    {
-        qty = 0;
-        var key = NormalizeMaterialCode(materialCode);
-        if (string.IsNullOrEmpty(key))
-            return false;
-        return ProductionFullBoxQtyMap.TryGetValue(key, out qty);
-    }
-
-    void ApplyFullBoxAfterQuery()
-    {
-        if (!IsProductionOnlyPage || printModel is null)
-            return;
-
-        ResetFullBoxScanState(clearPrintedBoxes: true);
-        PrintCount = "1";
-
-        if (!TryResolveFullBoxQty(printModel.materialCode, out var qty) || qty <= 0)
-        {
-            SnackbarHelper.Show(
-                $"物料 {NormalizeMaterialCode(printModel.materialCode)} 未配置满箱数量，无法扫码出标",
-                Severity.Warning);
-            AppendLog($"满箱数量未配置：{printModel.materialCode}");
-            return;
-        }
-
-        FullBoxQty = qty;
-        FullBoxQtyInput = qty.ToString(CultureInfo.InvariantCulture);
-        BoxNum = qty.ToString(CultureInfo.InvariantCulture);
-        SumNum = qty.ToString(CultureInfo.InvariantCulture);
-        AppendLog($"满箱数量：{qty}（物料 {NormalizeMaterialCode(printModel.materialCode)}）");
-    }
-
-    /// <summary>
-    /// 条码：前 2 位厂区/类型（字母或数字，如 XH、1H）+ 订单号 + 序列号。
-    /// 例：XH1027895153982 → 订单 102789515，序列 3982；
-    ///     1H1015168760002 → 订单 101516876，序列 0002。
-    /// </summary>
-    bool TryParseProductionScanBarcode(string raw, out string orderInBarcode, out string serial)
-    {
-        orderInBarcode = string.Empty;
-        serial = string.Empty;
-        var code = (raw ?? string.Empty).Trim();
-        if (code.Length < 4)
-            return false;
-        // 前缀可为 XH / 1H 等，不要求两位都是字母
-        if (!char.IsLetterOrDigit(code[0]) || !char.IsLetterOrDigit(code[1]))
-            return false;
-
-        var body = code[2..];
-        var expectedOrder = NormalizeMaterialCode(printModel?.orderNo);
-        if (string.IsNullOrEmpty(expectedOrder))
-            expectedOrder = NormalizeMaterialCode(ProdOrderNo);
-
-        if (string.IsNullOrEmpty(expectedOrder))
-            return false;
-
-        if (!body.StartsWith(expectedOrder, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        serial = body[expectedOrder.Length..];
-        if (string.IsNullOrWhiteSpace(serial))
-            return false;
-
-        orderInBarcode = expectedOrder;
-        return true;
-    }
-
-    /// <summary>生产入库页手动填写的满箱数量文本。</summary>
-    string FullBoxQtyInput
-    {
-        get => _fullBoxQtyInput;
-        set
-        {
-            _fullBoxQtyInput = value ?? string.Empty;
-            FullBoxQty = int.TryParse(_fullBoxQtyInput.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0
-                ? n
-                : 0;
-        }
-    }
-
-    string _fullBoxQtyInput = string.Empty;
-
-    async Task OnScanBarcodeKeyDown(KeyboardEventArgs e)
-    {
-        if (!IsProductionOnlyPage)
-            return;
-        if (e.Key is not ("Enter" or "NumpadEnter"))
-            return;
-
-        await ProcessScanBarcodeAsync();
-    }
-
-    async Task ProcessScanBarcodeAsync()
-    {
-        if (!IsProductionOnlyPage)
-            return;
-
-        var raw = ScanBarcodeInput?.Trim() ?? string.Empty;
-        ScanBarcodeInput = string.Empty;
-
-        if (string.IsNullOrEmpty(raw))
-            return;
-
-        if (IsPrinting || IsSearching)
-        {
-            SnackbarHelper.Show("正在处理中，请稍后再扫", Severity.Warning);
-            return;
-        }
-
-        if (printModel is null || string.IsNullOrEmpty(printModel.orderNo))
-        {
-            SnackbarHelper.Show("请先查询生产订单", Severity.Warning);
-            return;
-        }
-
-        if (FullBoxQty <= 0)
-        {
-            SnackbarHelper.Show("当前物料未配置满箱数量", Severity.Warning);
-            return;
-        }
-
-        if (!TryParseProductionScanBarcode(raw, out var orderInBarcode, out var serial))
-        {
-            var expected = NormalizeMaterialCode(printModel.orderNo);
-            SnackbarHelper.Show($"条码无效或订单不匹配（需含订单 {expected}）", Severity.Error);
-            AppendLog($"扫码拒绝：{raw}");
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        if (!_scannedSerials.Add(serial))
-        {
-            SnackbarHelper.Show($"序列号重复：{serial}", Severity.Warning);
-            AppendLog($"重复扫码：{raw}");
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        CurrentBoxScanCount++;
-        AppendLog($"扫码 OK：{raw}（{orderInBarcode}/{serial}）本箱 {CurrentBoxScanCount}/{FullBoxQty}");
-        await InvokeAsync(StateHasChanged);
-
-        if (CurrentBoxScanCount < FullBoxQty)
-            return;
-
-        // 扫满一箱 → 只打 1 张生产入库标签（不打海外配套）；失败则保留本箱进度
-        BoxNum = FullBoxQty.ToString(CultureInfo.InvariantCulture);
-        SumNum = FullBoxQty.ToString(CultureInfo.InvariantCulture);
-        PrintCount = "1";
-        AppendLog($"已满箱 {FullBoxQty}，自动打印生产入库标签…");
-        var boxesBefore = PrintedBoxCount;
-        _allowProductionAutoPrint = true;
-        try
-        {
-            await PrintSubmit();
-        }
-        finally
-        {
-            _allowProductionAutoPrint = false;
-        }
-
-        if (PrintedBoxCount > boxesBefore)
-            CurrentBoxScanCount = 0;
-        else
-            SnackbarHelper.Show("自动打印失败，本箱进度已保留，请检查打印机后继续扫码满箱重试", Severity.Warning);
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    #endregion
 
     string GetLangParam()
     {
@@ -647,13 +399,9 @@ public partial class MaterialLabel
     static string BuildTempLabelQrValue(string materialCode, string batchNo) =>
         "//" + materialCode + "//////BATCH/" + batchNo;
 
+    /// <summary>对齐 WinForm：生产入库且非马来版式时打海外配套；V2(smt) 跳过。</summary>
     bool ShouldPrintTempBoxLabels()
     {
-        // 生产入库独立页：只打一张生产入库标签，不打海外配套
-        if (IsProductionOnlyPage)
-            return false;
-
-        // 对齐 WinForm：V2(smt) 跳过配套，避免与新码流程混打
         if (UseProductInboundQrV2())
             return false;
 
@@ -1158,7 +906,6 @@ public partial class MaterialLabel
             printModel = model;
             printModelList = new List<EWMLabelModel> { printModel };
             await TryLoadCustomerPoForProductionOrderAsync(productionNo);
-            ApplyFullBoxAfterQuery();
             AppendLog($"查询成功：{productionNo}");
             SnackbarHelper.Show("查询成功", Severity.Success);
         }
@@ -1799,13 +1546,6 @@ OUTPUT INSERTED.CurrentSeq;";
     {
         if (IsPrinting) return;
 
-        // 生产入库独立页：禁止手动打印，只能扫满后自动出标
-        if (IsProductionOnlyPage && !_allowProductionAutoPrint)
-        {
-            SnackbarHelper.Show("本页仅支持扫码满箱后自动打印，不可手动补打", Severity.Warning);
-            return;
-        }
-
         if (!ValidateSpecialPrintMode())
             return;
 
@@ -1881,9 +1621,6 @@ OUTPUT INSERTED.CurrentSeq;";
 
             if (ShouldPrintTempBoxLabels())
                 await PrintTempBoxExtraLabelsAsync(count);
-
-            if (IsProductionOnlyPage && FullBoxQty > 0)
-                PrintedBoxCount++;
 
             SnackbarHelper.Show("打印提交成功", Severity.Success);
         }
@@ -3247,14 +2984,6 @@ OUTPUT INSERTED.CurrentSeq;";
     /// <summary>对齐 WinForm purchaseFunction：控制可见 Tab。</summary>
     void ApplyPurchaseFunctionConfig()
     {
-        // 独立「生产入库」页面：始终只保留生产 Tab，不受 purchaseFunction 影响
-        if (IsProductionOnlyPage)
-        {
-            VisibleLogicalTabs = [0];
-            activeTabIndex = 0;
-            return;
-        }
-
         var code = Config["purchaseFunction"]?.Trim() ?? string.Empty;
         switch (code)
         {
