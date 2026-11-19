@@ -13,7 +13,7 @@ namespace NewWebPrint.Components.Pages.用户定制化标签;
 
 public partial class LabelPrintForCustomerCustom
 {
-    const string TemplateFileName = "赵鉴标签25_15.json";
+    const string TemplateFileName = "JCH35S1.json";
     const string PrinterStorageKey = "CustomerCustom_printer";
     const string BlockNameType = "物料名称";
     const string BlockNameMaterial = "物料号";
@@ -35,10 +35,10 @@ public partial class LabelPrintForCustomerCustom
     int PrintCount { get; set; } = 1;
 
     string PreviewTypeLine =>
-        SelectedModel == null ? "Type:" : BuildTypeLine(SelectedModel);
+        SelectedModel == null ? "" : BuildTypeLine(SelectedModel);
 
     string PreviewOcLine =>
-        SelectedModel == null ? "O.C: " : BuildOcLine(SelectedModel);
+        SelectedModel == null ? "" : BuildOcLine(SelectedModel);
 
     string PreviewSerialLine =>
         BuildSerialLine(ProductionDate ?? DateTime.Today, SerialStart);
@@ -260,20 +260,14 @@ public partial class LabelPrintForCustomerCustom
         }
     }
 
-    static string BuildTypeLine(EWMLabelModel model)
-    {
-        var type = (model.materialName ?? string.Empty).Trim();
-        return string.IsNullOrEmpty(type) ? "Type:" : "Type:" + type;
-    }
+    static string BuildTypeLine(EWMLabelModel model) =>
+        (model.materialName ?? string.Empty).Trim();
 
-    static string BuildOcLine(EWMLabelModel model)
-    {
-        var code = (model.materialCode ?? string.Empty).Trim();
-        return "O.C: " + code;
-    }
+    static string BuildOcLine(EWMLabelModel model) =>
+        (model.materialCode ?? string.Empty).Trim();
 
     static string BuildSerialLine(DateTime date, int serial) =>
-        "M.D:" + date.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
+        date.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
         + "-" + serial.ToString("D5", CultureInfo.InvariantCulture);
 
     static void SetBlockText(PrintLayoutModel layout, string blockName, string content)
